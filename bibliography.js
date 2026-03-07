@@ -1,212 +1,40 @@
-const BIBLIOGRAPHY_TITLE = "Список використаних джерел";
-
-export const bibliographySources = [
-  { title: "ДСТУ 3008:2015. Інформація та документація. Звіти у сфері науки і техніки.", pages: 30 },
-  { title: "ДСТУ 8302:2015. Бібліографічне посилання. Загальні положення та правила складання.", pages: 20 },
-  { title: "ISO 690:2021. Information and documentation — Guidelines for bibliographic references.", pages: 35 },
-  { title: "Ковальчук О.І. Методологія наукових досліджень. — Київ: Центр учбової літератури, 2020.", pages: 280 },
-  { title: "Пилипчук М.І., Григор’єв А.С., Шостак В.В. Основи наукових досліджень. — Київ: Знання, 2019.", pages: 270 },
-  { title: "Гончаренко С.У. Педагогічні дослідження: методологічні поради молодим науковцям. — Київ, 2018.", pages: 180 },
-  { title: "Білуха М.Т. Методологія наукових досліджень. — Київ: АБУ, 2017.", pages: 240 },
-  { title: "Шейко В.М., Кушнаренко Н.М. Організація та методика науково-дослідницької діяльності. — Київ: Знання, 2016.", pages: 310 },
-  { title: "Цехмістрова Г.С. Основи наукових досліджень. — Київ: Слово, 2015.", pages: 320 },
-  { title: "Крушельницька О.В. Методологія та організація наукових досліджень. — Київ: Кондор, 2014.", pages: 206 },
-  { title: "Мочерний С.В. Методологія економічного дослідження. — Львів: Світ, 2013.", pages: 415 },
-  { title: "Єріна А.М., Захожай В.Б., Єрін Д.Л. Методологія наукових досліджень. — Київ: Центр навчальної літератури, 2012.", pages: 212 },
-  { title: "Петрушенко В.Л. Філософія і методологія науки. — Львів: Новий Світ-2000, 2011.", pages: 190 },
-  { title: "Бушуєв С.Д. Управління проєктами: основи професійних знань. — Київ: ІРІДІУМ, 2010.", pages: 640 },
-  { title: "Zobel J. Writing for Computer Science. 3rd ed. — London: Springer, 2014.", pages: 284 }
+const SOURCES = [
+  { id: 1, pages: 312, text: 'Ковальчук І. П. Теорія академічного письма у вищій школі. – Київ: Академвидав, 2019. – 312 с.' },
+  { id: 2, pages: 248, text: 'Мельник О. В. Методика оформлення наукових текстів та студентських робіт. – Львів: Світ, 2021. – 248 с.' },
+  { id: 3, pages: 295, text: 'Шевченко Д. М. Основи наукової комунікації та редагування тексту. – Харків: Фоліо, 2018. – 295 с.' },
+  { id: 4, pages: 276, text: 'Грищенко Н. І. Академічне письмо: структура, стиль, аргументація. – Київ: Ліра-К, 2020. – 276 с.' },
+  { id: 5, pages: 264, text: 'Бондаренко Т. С. Науковий текст у системі сучасної освіти. – Одеса: Астропринт, 2022. – 264 с.' },
+  { id: 6, pages: 301, text: 'Литвиненко С. А. Методологія підготовки студентських досліджень. – Київ: Каравела, 2017. – 301 с.' },
+  { id: 7, pages: 233, text: 'Романюк П. Д. Технологія створення академічних документів у текстових редакторах. – Тернопіль: Навчальна книга – Богдан, 2020. – 233 с.' },
+  { id: 8, pages: 287, text: 'Кравець Л. О. Культура наукового мовлення та редакторська практика. – Дніпро: Університетська книга, 2019. – 287 с.' },
+  { id: 9, pages: 214, text: 'Гнатюк В. С. Практикум з оформлення дипломних та курсових робіт. – Київ: Центр учбової літератури, 2021. – 214 с.' },
+  { id: 10, pages: 259, text: 'Савченко І. М. Наукове редагування текстів у цифровому середовищі. – Львів: ЛНУ ім. І. Франка, 2023. – 259 с.' },
+  { id: 11, pages: 241, text: 'Ткаченко Р. О. Структура наукового дослідження та вимоги до оформлення результатів. – Харків: Основа, 2018. – 241 с.' },
+  { id: 12, pages: 268, text: 'Дорошенко М. Ю. Академічна доброчесність та стандарти оформлення досліджень. – Київ: Ніка-Центр, 2022. – 268 с.' },
+  { id: 13, pages: 198, text: 'Петренко А. Г. Редагування текстових документів у Microsoft Word. – Чернігів: Десна-Поліграф, 2019. – 198 с.' },
+  { id: 14, pages: 223, text: 'Білик О. М. Методичні засади підготовки наукових публікацій студентів. – Полтава: ПУЕТ, 2020. – 223 с.' },
+  { id: 15, pages: 246, text: 'Сидорчук Ю. Л. Академічна культура та стандарти оформлення наукових праць. – Житомир: ЖДУ ім. І. Франка, 2021. – 246 с.' }
 ];
-
-export function buildBibliographyParagraphs(sources = bibliographySources) {
-  const normalizedSources = normalizeSources(sources);
-
-  if (normalizedSources.length === 0) {
-    return [
-      `<w:p><w:r><w:t>${BIBLIOGRAPHY_TITLE}</w:t></w:r></w:p>`,
-      "<w:p><w:r><w:t>[1] Додайте бібліографічні джерела у bibliography.js</w:t></w:r></w:p>"
-    ];
-  }
-
-  const items = normalizedSources.map(
-    (source, index) => `<w:p><w:r><w:t>[${index + 1}] ${escapeXml(source.title)}</w:t></w:r></w:p>`
-  );
-
-  return [`<w:p><w:r><w:t>${BIBLIOGRAPHY_TITLE}</w:t></w:r></w:p>`, ...items];
-}
-
-export function insertBibliography(documentXml, sources = bibliographySources) {
-  const paragraphs = buildBibliographyParagraphs(sources).join("");
-  return documentXml.replace("</w:body>", `${paragraphs}</w:body>`);
-}
-
-export function insertCitationReferences(documentXml, sources = bibliographySources) {
-  const normalizedSources = normalizeSources(sources);
-
-  if (normalizedSources.length === 0) {
-    return documentXml;
-  }
-
-  return documentXml.replace(/<w:body>([\s\S]*?)<\/w:body>/, (full, bodyContent) => {
-    const paragraphPattern = /<w:p\b[\s\S]*?<\/w:p>/g;
-    const paragraphs = [...bodyContent.matchAll(paragraphPattern)].map((match) => match[0]);
-
-    if (paragraphs.length === 0) {
-      return full;
-    }
-
-    let lastCitationSource = null;
-    let contentParagraphsAfterCitation = 0;
-    let nextInsertionDistance = randomDistance();
-    let previousResultParagraphWasCitation = false;
-
-    const updatedParagraphs = [];
-
-    for (const paragraphXml of paragraphs) {
-      const paragraphText = extractParagraphText(paragraphXml);
-      const isCitationParagraph = isCitationText(paragraphText);
-      const isContentParagraph = isMeaningfulContentParagraph(paragraphXml, paragraphText);
-
-      updatedParagraphs.push(paragraphXml);
-
-      if (isCitationParagraph) {
-        previousResultParagraphWasCitation = true;
-        contentParagraphsAfterCitation = 0;
-        continue;
-      }
-
-      if (!isContentParagraph) {
-        previousResultParagraphWasCitation = false;
-        continue;
-      }
-
-      contentParagraphsAfterCitation += 1;
-
-      if (contentParagraphsAfterCitation < nextInsertionDistance || previousResultParagraphWasCitation) {
-        previousResultParagraphWasCitation = false;
-        continue;
-      }
-
-      const citation = generateCitation(normalizedSources, lastCitationSource);
-      updatedParagraphs.push(citation.paragraphXml);
-
-      lastCitationSource = citation.sourceIndex;
-      contentParagraphsAfterCitation = 0;
-      nextInsertionDistance = randomDistance();
-      previousResultParagraphWasCitation = true;
-    }
-
-    const bodyWithCitations = bodyContent.replace(paragraphPattern, () => updatedParagraphs.shift());
-    return `<w:body>${bodyWithCitations}${updatedParagraphs.join("")}</w:body>`;
-  });
-}
-
-function normalizeSources(sources) {
-  if (!Array.isArray(sources)) {
-    return [];
-  }
-
-  return sources
-    .map((source) => {
-      if (typeof source === "string") {
-        return { title: source, pages: 1 };
-      }
-
-      if (!source || typeof source.title !== "string") {
-        return null;
-      }
-
-      const pages = Number.isInteger(source.pages) && source.pages > 0 ? source.pages : 1;
-      return { title: source.title, pages };
-    })
-    .filter(Boolean);
-}
-
-function generateCitation(sources, previousSourceIndex) {
-  const sourceIndex = pickSourceIndex(sources.length, previousSourceIndex);
-  const source = sources[sourceIndex];
-  const page = randomInt(1, source.pages);
-  const text = `[${sourceIndex + 1}, с. ${page}]`;
-
-  return {
-    sourceIndex,
-    paragraphXml: `<w:p><w:r><w:t>${escapeXml(text)}</w:t></w:r></w:p>`
-  };
-}
-
-function pickSourceIndex(sourcesLength, previousSourceIndex) {
-  if (sourcesLength <= 1) {
-    return 0;
-  }
-
-  let candidate = randomInt(0, sourcesLength - 1);
-
-  while (candidate === previousSourceIndex) {
-    candidate = randomInt(0, sourcesLength - 1);
-  }
-
-  return candidate;
-}
-
-function randomDistance() {
-  return randomInt(1, 2);
-}
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function isMeaningfulContentParagraph(paragraphXml, paragraphText) {
-  if (!paragraphText) {
-    return false;
-  }
-
-  if (isHeadingParagraph(paragraphXml)) {
-    return false;
-  }
-
-  if (hasPageBreak(paragraphXml)) {
-    return false;
-  }
-
-  return true;
+function pickRandomSource(lastSourceId) {
+  const candidates = SOURCES.filter((source) => source.id !== lastSourceId);
+  return candidates[randomInt(0, candidates.length - 1)];
 }
 
-function isHeadingParagraph(paragraphXml) {
-  return /w:pStyle\s+w:val="Heading[1-6]"/.test(paragraphXml);
+function createCitation(lastSourceId) {
+  const source = pickRandomSource(lastSourceId);
+  const page = randomInt(1, source.pages);
+  return {
+    citation: `[${source.id}, с. ${page}]`,
+    sourceId: source.id,
+  };
 }
 
-function hasPageBreak(paragraphXml) {
-  return /<w:br\b[^>]*w:type="page"/.test(paragraphXml);
-}
-
-function isCitationText(text) {
-  return /^\[\d+,\s*с\.\s*\d+\]$/.test(text.trim());
-}
-
-function extractParagraphText(paragraphXml) {
-  return [...paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
-    .map((match) => decodeXmlText(match[1]))
-    .join(" ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-function decodeXmlText(text) {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&#39;/g, "'");
-}
-
-function escapeXml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
+module.exports = {
+  SOURCES,
+  createCitation,
+};
