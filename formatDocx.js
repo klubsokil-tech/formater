@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import JSZip from "jszip";
-import { attachCitationReferences, insertBibliography } from "./bibliography.js";
+import { bibliographySources, insertBibliography, insertCitationReferences } from "./bibliography.js";
 
 const DOC_XML_PATH = "word/document.xml";
 const PAGE_BREAK_PARAGRAPH = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
@@ -24,11 +24,8 @@ async function main() {
   const analysis = analyzeDocument(documentXml);
   documentXml = applyFormatting(documentXml, analysis);
   documentXml = insertTableOfContents(documentXml);
-  documentXml = attachCitationReferences(documentXml, [1, 2]);
-  documentXml = insertBibliography(documentXml, [
-    "DSTU 8302:2015. Бібліографічне посилання. Загальні положення.",
-    "ISO 690:2021. Information and documentation — Guidelines for bibliographic references."
-  ]);
+  documentXml = insertCitationReferences(documentXml, bibliographySources);
+  documentXml = insertBibliography(documentXml, bibliographySources);
 
   zip.file(DOC_XML_PATH, documentXml);
   const outputBuffer = await zip.generateAsync({ type: "nodebuffer" });
