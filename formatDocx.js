@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import JSZip from "jszip";
+import { spawn } from "node:child_process";
 import { bibliographySources, insertBibliography, insertCitationReferences } from "./bibliography.js";
 
 const DOC_XML_PATH = "word/document.xml";
@@ -35,6 +37,28 @@ async function main() {
 
   console.log(`Готово. Форматований файл збережено: ${outputPath}`);
   console.log(`Аналітика: заголовків ${analysis.headingsCount}, абзаців ${analysis.paragraphCount}.`);
+
+  await runVerification(outputPath);
+}
+
+async function runVerification(outputPath) {
+  console.log("Запускаю перевірку результату...");
+
+  const verifyScriptPath = fileURLToPath(new URL("./verify.js", import.meta.url));
+
+  await new Promise((resolve, reject) => {
+    const verifyProcess = spawn(process.execPath, [verifyScriptPath, outputPath], { stdio: "inherit" });
+
+    verifyProcess.on("error", reject);
+    verifyProcess.on("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+
+      reject(new Error(`Перевірка verify.js завершилась з кодом ${code}.`));
+    });
+  });
 }
 
 function validateArgs(inputPath, outputPath) {
