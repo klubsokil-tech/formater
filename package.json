@@ -1,0 +1,15 @@
+{
+  "name": "formater",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CLI-інструмент для базового форматування DOCX файлів",
+  "main": "formatDocx.js",
+  "scripts": {
+    "format": "node formatDocx.js",
+    "verify": "node verify.js"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "jszip": "^3.10.1"
+  }
+}
