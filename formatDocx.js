@@ -42,7 +42,7 @@ function makeRun(text, opts = {}) {
 
 function makeHeadingParagraph(text, level) {
   return new Paragraph({
-    text,
+    children: [makeRun(text)],
     heading: level,
     alignment: AlignmentType.CENTER,
     spacing: { line: 360, before: 200, after: 120 },
@@ -92,6 +92,7 @@ function addCitations(paragraphs) {
   let lastSourceId = null;
   let lastWasCitation = false;
   let target = Math.random() < 0.5 ? 1 : 2;
+  let citationsAdded = 0;
 
   for (const item of paragraphs) {
     output.push(item);
@@ -110,37 +111,43 @@ function addCitations(paragraphs) {
       lastWasCitation = true;
       normalCounter = 0;
       target = Math.random() < 0.5 ? 1 : 2;
+      citationsAdded += 1;
     } else {
       lastWasCitation = false;
     }
   }
 
-  return output;
+  return {
+    paragraphs: output,
+    citationsAdded,
+  };
 }
 
-async function formatDocx(inputPath, outputPath) {
+async function formatDocx(inputPath, outputPath, options = {}) {
+  const onProgress = options.onProgress || (() => {});
+
+  onProgress('Перевіряю вхідний файл...');
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
   }
 
+  onProgress('Зчитую текст з DOCX...');
   const rawParagraphs = await extractParagraphs(inputPath);
 
+  onProgress('Класифікую заголовки та абзаци...');
   const structured = rawParagraphs.map((text) => ({
     type: classifyParagraph(text),
     text,
   }));
 
-  const withCitations = addCitations(structured);
+  onProgress('Додаю випадкові посилання...');
+  const { paragraphs: withCitations, citationsAdded } = addCitations(structured);
 
   const docParagraphs = [];
 
+  onProgress('Формую зміст та структуру документа...');
   docParagraphs.push(
-    new Paragraph({
-      text: 'ЗМІСТ',
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.CENTER,
-      pageBreakBefore: false,
-    }),
+    makeHeadingParagraph('ЗМІСТ', HeadingLevel.HEADING_1),
   );
   docParagraphs.push(
     new TableOfContents('Зміст', {
@@ -171,8 +178,10 @@ async function formatDocx(inputPath, outputPath) {
     }
   }
 
+  let bibliographyAdded = false;
   if (!withCitations.some((p) => p.type === 'h1' && p.text.toUpperCase() === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ')) {
     docParagraphs.push(...buildBibliographySection());
+    bibliographyAdded = true;
   }
 
   const doc = new Document({
@@ -193,9 +202,19 @@ async function formatDocx(inputPath, outputPath) {
     ],
   });
 
+  onProgress('Зберігаю відформатований файл...');
   const buffer = await Packer.toBuffer(doc);
   fs.writeFileSync(outputPath, buffer);
-  return outputPath;
+
+  return {
+    outputPath,
+    stats: {
+      sourceParagraphs: rawParagraphs.length,
+      outputParagraphs: docParagraphs.length,
+      citationsAdded,
+      bibliographyAdded,
+    },
+  };
 }
 
 async function main() {
@@ -203,8 +222,8 @@ async function main() {
   const outputPath = process.argv[3] || 'output.docx';
 
   try {
-    await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
-    console.log(`Готово. Створено файл: ${outputPath}`);
+    const result = await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
+    console.log(`Готово. Створено файл: ${result.outputPath}`);
     console.log('За бажанням виконайте перевірку: node verify.js ' + outputPath);
   } catch (error) {
     console.error('Помилка форматування:', error.message);

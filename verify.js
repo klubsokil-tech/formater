@@ -49,26 +49,33 @@ async function verifyDocx(docxPath) {
   ];
 
   const failed = results.filter((r) => !r.pass);
+  const ok = failed.length === 0;
 
-  console.log('\nРезультати перевірки:');
-  for (const result of results) {
-    console.log(`- ${result.pass ? 'PASS' : 'FAIL'}: ${result.name}`);
-  }
-
-  if (failed.length === 0) {
-    console.log('\nПІДСУМОК: PASS ✅');
-    return true;
-  }
-
-  console.log(`\nПІДСУМОК: FAIL ❌ (${failed.length} невідповідностей)`);
-  return false;
+  return {
+    ok,
+    failedCount: failed.length,
+    results,
+  };
 }
 
 async function main() {
   const input = process.argv[2] || 'output.docx';
   try {
-    const ok = await verifyDocx(path.resolve(input));
-    process.exit(ok ? 0 : 2);
+    const report = await verifyDocx(path.resolve(input));
+
+    console.log('\nРезультати перевірки:');
+    for (const result of report.results) {
+      console.log(`- ${result.pass ? 'PASS' : 'FAIL'}: ${result.name}`);
+    }
+
+    if (report.ok) {
+      console.log('\nПІДСУМОК: PASS ✅');
+      process.exit(0);
+      return;
+    }
+
+    console.log(`\nПІДСУМОК: FAIL ❌ (${report.failedCount} невідповідностей)`);
+    process.exit(2);
   } catch (error) {
     console.error('Помилка перевірки:', error.message);
     process.exit(1);
