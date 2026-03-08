@@ -15,6 +15,13 @@ fs.mkdirSync(outputDir, { recursive: true });
 
 const jobs = new Map();
 
+function coerceEditOptions(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  if (payload.editOptions && typeof payload.editOptions === 'object') return payload.editOptions;
+  if (payload.options && typeof payload.options === 'object') return payload.options;
+  return {};
+}
+
 function sendJson(res, code, payload) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
@@ -33,15 +40,20 @@ function sendFile(res, fullPath, contentType = 'text/html; charset=utf-8') {
 
 function parseBody(req) {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks = [];
+    let totalBytes = 0;
+
     req.on('data', (chunk) => {
-      body += chunk;
-      if (body.length > 50 * 1024 * 1024) {
+      totalBytes += chunk.length;
+      if (totalBytes > 50 * 1024 * 1024) {
         reject(new Error('Запит занадто великий.'));
         req.destroy();
+        return;
       }
+      chunks.push(chunk);
     });
-    req.on('end', () => resolve(body));
+
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
     req.on('error', reject);
   });
 }
@@ -78,12 +90,13 @@ function pushLog(job, message, progress = null) {
   job.updatedAt = new Date().toISOString();
 }
 
-async function processJob(job, inputPath, outputPath, outputFilename) {
+async function processJob(job, inputPath, outputPath, outputFilename, editOptions = {}) {
   try {
     updateJob(job, { status: 'running', progress: 5 });
     pushLog(job, 'Починаю форматування...', 10);
 
     const formatResult = await formatDocx(inputPath, outputPath, {
+      editOptions,
       onProgress: (message) => {
         const nextProgress = Math.min(70, job.progress + 12);
         pushLog(job, message, nextProgress);
@@ -114,8 +127,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname.startsWith('/public/')) {
+    const requestedPath = path.normalize(url.pathname.replace('/public/', ''));
+    const fullPath = path.join(publicDir, requestedPath);
+    if (!fullPath.startsWith(publicDir)) {
+      sendJson(res, 400, { error: 'Некоректний шлях.' });
+      return;
+    }
+    sendFile(res, fullPath, 'text/plain; charset=utf-8');
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/jobs') {
     sendJson(res, 200, Array.from(jobs.values()));
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/status/')) {
+    const jobId = url.pathname.split('/').filter(Boolean)[2];
+    const job = jobs.get(jobId);
+    if (!job) {
+      sendJson(res, 404, { error: 'Завдання не знайдено.' });
+      return;
+    }
+    sendJson(res, 200, job);
     return;
   }
 
@@ -175,8 +210,10 @@ const server = http.createServer(async (req, res) => {
       const outputFilename = `${path.parse(payload.filename).name}-formatted-${job.id}.docx`;
       const outputPath = path.join(outputDir, outputFilename);
 
+      const editOptions = coerceEditOptions(payload);
+
       sendJson(res, 202, { jobId: job.id });
-      processJob(job, inputPath, outputPath, outputFilename);
+      processJob(job, inputPath, outputPath, outputFilename, editOptions);
       return;
     } catch (error) {
       sendJson(res, 400, { error: error.message || 'Некоректний запит.' });

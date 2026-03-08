@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DOCX Formatter UI</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; max-width: 900px; }
+      body { font-family: Arial, sans-serif; margin: 24px; max-width: 1000px; }
       .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
       button { padding: 8px 14px; cursor: pointer; }
       progress { width: 100%; height: 22px; }
@@ -16,18 +16,43 @@
       .warn { color: #ad6a00; }
       .err { color: #c01616; }
       ul { margin-top: 8px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
+      label { display: block; }
+      .full { grid-column: 1 / -1; }
+      select { padding: 4px; }
     </style>
   </head>
   <body>
     <h1>Academic DOCX Formatter — UI</h1>
 
     <div class="card">
-      <h2>1) Оберіть файл</h2>
+      <h2>1) Оберіть файл та опції редагування</h2>
       <form id="uploadForm">
-        <input id="document" name="document" type="file" accept=".docx" required />
-        <button type="submit">Запустити форматування</button>
+        <p><input id="document" name="document" type="file" accept=".docx" required /></p>
+
+        <div class="grid">
+          <label><input type="checkbox" id="applyPageSetup" checked /> Параметри сторінки (поля + книжкова орієнтація)</label>
+          <label><input type="checkbox" id="applyTextFormatting" checked /> Шрифт TNR 14, інтервал 1.5, абзац 1.25 см, вирівнювання по ширині</label>
+          <label><input type="checkbox" id="applyHeadingStyles" checked /> Стилі заголовків (жирний, вирівнювання)</label>
+          <label><input type="checkbox" id="enforceSectionPageBreaks" checked /> Розрив сторінки перед кожним розділом</label>
+          <label><input type="checkbox" id="addBlankLinesAroundHeadings" checked /> Порожній рядок до/після кожного заголовка</label>
+          <label><input type="checkbox" id="addTOC" checked /> Додати автоматичний зміст (TOC)</label>
+          <label><input type="checkbox" id="addRandomCitations" checked /> Додавати випадкові посилання [номер, с. сторінка]</label>
+          <label><input type="checkbox" id="normalizeBracketCitations" checked /> Уніфікувати формат посилань у квадратних дужках</label>
+          <label><input type="checkbox" id="ensureBibliography" checked /> Додавати список джерел, якщо його немає</label>
+          <label><input type="checkbox" id="preserveSpecialContent" checked /> Не змінювати корейські символи та спецконтент</label>
+
+          <label class="full">Сортування джерел:
+            <select id="bibliographySort">
+              <option value="order" selected>Порядок згадування (order)</option>
+              <option value="alpha">За алфавітом (alpha)</option>
+            </select>
+          </label>
+        </div>
+
+        <p><button type="submit">Запустити форматування</button></p>
       </form>
-      <p class="muted">Після запуску ви бачитимете прогрес, лог кроків та підсумковий звіт.</p>
+      <p class="muted">Усі параметри опційні: ви можете вимкнути непотрібні перед запуском.</p>
     </div>
 
     <div class="card">
@@ -58,6 +83,22 @@
         statusEl.className = `status ${cls}`.trim();
       }
 
+      function getEditOptions() {
+        return {
+          addTOC: document.getElementById('addTOC').checked,
+          addRandomCitations: document.getElementById('addRandomCitations').checked,
+          normalizeBracketCitations: document.getElementById('normalizeBracketCitations').checked,
+          ensureBibliography: document.getElementById('ensureBibliography').checked,
+          bibliographySort: document.getElementById('bibliographySort').value,
+          applyPageSetup: document.getElementById('applyPageSetup').checked,
+          applyTextFormatting: document.getElementById('applyTextFormatting').checked,
+          applyHeadingStyles: document.getElementById('applyHeadingStyles').checked,
+          enforceSectionPageBreaks: document.getElementById('enforceSectionPageBreaks').checked,
+          addBlankLinesAroundHeadings: document.getElementById('addBlankLinesAroundHeadings').checked,
+          preserveSpecialContent: document.getElementById('preserveSpecialContent').checked,
+        };
+      }
+
       function renderLog(lines = []) {
         logEl.innerHTML = lines.map((line) => `<div>• ${line}</div>`).join('');
         logEl.scrollTop = logEl.scrollHeight;
@@ -71,6 +112,16 @@
 
         const stats = job.formatStats;
         const verify = job.verifyReport;
+
+        const optionsHtml = stats?.optionsUsed ? `
+          <h3>Застосовані опції</h3>
+          <ul>
+            ${Object.entries(stats.optionsUsed).map(([key, value]) => `<li><b>${key}</b>: ${String(value)}</li>`).join('')}
+          </ul>` : '';
+
+        const notesHtml = stats?.notes?.length ? `
+          <h3>Нотатки</h3>
+          <ul>${stats.notes.map((note) => `<li>${note}</li>`).join('')}</ul>` : '';
 
         const statsHtml = stats ? `
           <h3>Форматування</h3>
@@ -94,7 +145,7 @@
 
         const errorHtml = job.error ? `<p class="err"><b>Помилка:</b> ${job.error}</p>` : '';
 
-        reportEl.innerHTML = `${errorHtml}${statsHtml}${verifyHtml}${downloadHtml}` || 'Немає даних.';
+        reportEl.innerHTML = `${errorHtml}${statsHtml}${optionsHtml}${notesHtml}${verifyHtml}${downloadHtml}` || 'Немає даних.';
       }
 
       async function pollJob(jobId) {
@@ -155,10 +206,17 @@
           reader.readAsDataURL(file);
         });
 
+        const selectedOptions = getEditOptions();
+
         const response = await fetch('/api/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: file.name, contentBase64: base64 }),
+          body: JSON.stringify({
+            filename: file.name,
+            contentBase64: base64,
+            editOptions: selectedOptions,
+            options: selectedOptions,
+          }),
         });
 
         const payload = await response.json();
