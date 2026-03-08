@@ -48,6 +48,13 @@
               <option value="alpha">За алфавітом (alpha)</option>
             </select>
           </label>
+
+
+          <label class="full">Власний список джерел (по одному джерелу на рядок):
+            <textarea id="customSources" rows="6" style="width:100%;" placeholder="Приклад:
+Ковальчук І. П. ...
+Мельник О. В. ..."></textarea>
+          </label>
         </div>
 
         <p><button type="submit">Запустити форматування</button></p>
@@ -90,6 +97,12 @@
           normalizeBracketCitations: document.getElementById('normalizeBracketCitations').checked,
           ensureBibliography: document.getElementById('ensureBibliography').checked,
           bibliographySort: document.getElementById('bibliographySort').value,
+          customSources: document
+            .getElementById('customSources')
+            .value
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean),
           applyPageSetup: document.getElementById('applyPageSetup').checked,
           applyTextFormatting: document.getElementById('applyTextFormatting').checked,
           applyHeadingStyles: document.getElementById('applyHeadingStyles').checked,
@@ -130,6 +143,7 @@
             <li>Абзаців у вихідному файлі: <b>${stats.outputParagraphs}</b></li>
             <li>Додано посилань: <b>${stats.citationsAdded}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
+            <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>
           </ul>` : '';
 
         const verifyHtml = verify ? `

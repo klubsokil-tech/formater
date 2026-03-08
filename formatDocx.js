@@ -28,6 +28,7 @@ const DEFAULT_OPTIONS = {
   normalizeBracketCitations: true,
   ensureBibliography: true,
   bibliographySort: 'order', // order | alpha
+  customSources: [],
   applyPageSetup: true,
   applyTextFormatting: true,
   applyHeadingStyles: true,
@@ -56,6 +57,12 @@ function sanitizeEditOptions(raw = {}) {
   }
 
   merged.bibliographySort = merged.bibliographySort === 'alpha' ? 'alpha' : 'order';
+
+  const rawSources = Array.isArray(merged.customSources) ? merged.customSources : [];
+  merged.customSources = rawSources
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+
   return merged;
 }
 
@@ -136,7 +143,15 @@ function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
   });
 }
 
-function getSortedSources(mode) {
+function getSortedSources(mode, customSources = []) {
+  if (customSources.length > 0) {
+    const normalizedCustom = customSources.map((text, index) => ({ id: index + 1, text }));
+    if (mode === 'alpha') {
+      return normalizedCustom.sort((a, b) => a.text.localeCompare(b.text, 'uk'));
+    }
+    return normalizedCustom;
+  }
+
   if (mode === 'alpha') {
     return [...SOURCES].sort((a, b) => a.text.localeCompare(b.text, 'uk'));
   }
@@ -144,7 +159,7 @@ function getSortedSources(mode) {
 }
 
 function buildBibliographySection(config = DEFAULT_OPTIONS) {
-  const sortedSources = getSortedSources(config.bibliographySort);
+  const sortedSources = getSortedSources(config.bibliographySort, config.customSources);
   const paragraphs = [];
 
   if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
@@ -313,6 +328,7 @@ async function formatDocx(inputPath, outputPath, options = {}) {
       outputParagraphs: docParagraphs.length,
       citationsAdded,
       bibliographyAdded,
+      bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
       optionsUsed: config,
       notes: config.preserveSpecialContent
         ? ['Корейські символи в тексті зберігаються як є.', 'Складні обʼєкти (таблиці/формули) залежать від якості витягування Mammoth.']
