@@ -89,18 +89,11 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
   const headingText = isH1 ? text.toUpperCase() : text.charAt(0).toUpperCase() + text.slice(1);
 
   return new Paragraph({
-    children: [
-      makeRun(
-        headingText,
-        config.applyHeadingStyles ? { bold: true } : {},
-        config,
-      ),
-    ],
-    heading: headingLevel,
-    alignment: isH1 ? AlignmentType.CENTER : AlignmentType.LEFT,
-    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
-    pageBreakBefore: isH1 && config.enforceSectionPageBreaks,
-    indent: !isH1 && config.applyTextFormatting ? { firstLine: 709 } : undefined,
+    children: [makeRun(text)],
+    heading: level,
+    alignment: AlignmentType.CENTER,
+    spacing: { line: 360, before: 200, after: 120 },
+    pageBreakBefore: level === HeadingLevel.HEADING_1,
   });
 }
 
@@ -186,12 +179,14 @@ function addCitations(paragraphs, config) {
     }
   }
 
-  return { paragraphs: output, citationsAdded };
+  return {
+    paragraphs: output,
+    citationsAdded,
+  };
 }
 
 async function formatDocx(inputPath, outputPath, options = {}) {
   const onProgress = options.onProgress || (() => {});
-  const config = { ...DEFAULT_OPTIONS, ...(options.editOptions || {}) };
 
   onProgress('Перевіряю вхідний файл...');
   if (!fs.existsSync(inputPath)) {
@@ -199,32 +194,33 @@ async function formatDocx(inputPath, outputPath, options = {}) {
   }
 
   onProgress('Зчитую текст з DOCX...');
-  const rawParagraphs = await extractParagraphs(inputPath, config);
+  const rawParagraphs = await extractParagraphs(inputPath);
 
   onProgress('Класифікую заголовки та абзаци...');
-  const structured = rawParagraphs.map((text) => ({ type: classifyParagraph(text), text }));
+  const structured = rawParagraphs.map((text) => ({
+    type: classifyParagraph(text),
+    text,
+  }));
 
-  onProgress('Обробляю посилання та структуру...');
-  const { paragraphs: withCitations, citationsAdded } = addCitations(structured, config);
+  onProgress('Додаю випадкові посилання...');
+  const { paragraphs: withCitations, citationsAdded } = addCitations(structured);
 
   const docParagraphs = [];
 
-  if (config.addTOC) {
-    onProgress('Формую зміст документа...');
-    if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
-    docParagraphs.push(makeHeadingParagraph('ЗМІСТ', 'h1', config));
-    if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
-    docParagraphs.push(
-      new TableOfContents('Зміст', {
-        hyperlink: true,
-        headingStyleRange: '1-2',
-        stylesWithLevels: [
-          { styleName: 'Heading 1', level: 1 },
-          { styleName: 'Heading 2', level: 2 },
-        ],
-      }),
-    );
-  }
+  onProgress('Формую зміст та структуру документа...');
+  docParagraphs.push(
+    makeHeadingParagraph('ЗМІСТ', HeadingLevel.HEADING_1),
+  );
+  docParagraphs.push(
+    new TableOfContents('Зміст', {
+      hyperlink: true,
+      headingStyleRange: '1-2',
+      stylesWithLevels: [
+        { styleName: 'Heading 1', level: 1 },
+        { styleName: 'Heading 2', level: 2 },
+      ],
+    }),
+  );
 
   for (const item of withCitations) {
     if (item.type === 'h1') {
@@ -249,8 +245,8 @@ async function formatDocx(inputPath, outputPath, options = {}) {
   }
 
   let bibliographyAdded = false;
-  if (config.ensureBibliography && !withCitations.some((p) => p.type === 'h1' && ['СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', 'СПИСОК ДЖЕРЕЛ'].includes(p.text.toUpperCase()))) {
-    docParagraphs.push(...buildBibliographySection(config));
+  if (!withCitations.some((p) => p.type === 'h1' && p.text.toUpperCase() === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ')) {
+    docParagraphs.push(...buildBibliographySection());
     bibliographyAdded = true;
   }
 
@@ -290,10 +286,6 @@ async function formatDocx(inputPath, outputPath, options = {}) {
       outputParagraphs: docParagraphs.length,
       citationsAdded,
       bibliographyAdded,
-      optionsUsed: config,
-      notes: config.preserveSpecialContent
-        ? ['Корейські символи в тексті зберігаються як є.', 'Складні обʼєкти (таблиці/формули) залежать від якості витягування Mammoth.']
-        : [],
     },
   };
 }

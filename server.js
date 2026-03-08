@@ -15,13 +15,6 @@ fs.mkdirSync(outputDir, { recursive: true });
 
 const jobs = new Map();
 
-function coerceEditOptions(payload) {
-  if (!payload || typeof payload !== 'object') return {};
-  if (payload.editOptions && typeof payload.editOptions === 'object') return payload.editOptions;
-  if (payload.options && typeof payload.options === 'object') return payload.options;
-  return {};
-}
-
 function sendJson(res, code, payload) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
@@ -85,13 +78,12 @@ function pushLog(job, message, progress = null) {
   job.updatedAt = new Date().toISOString();
 }
 
-async function processJob(job, inputPath, outputPath, outputFilename, editOptions = {}) {
+async function processJob(job, inputPath, outputPath, outputFilename) {
   try {
     updateJob(job, { status: 'running', progress: 5 });
     pushLog(job, 'Починаю форматування...', 10);
 
     const formatResult = await formatDocx(inputPath, outputPath, {
-      editOptions,
       onProgress: (message) => {
         const nextProgress = Math.min(70, job.progress + 12);
         pushLog(job, message, nextProgress);
@@ -124,17 +116,6 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/jobs') {
     sendJson(res, 200, Array.from(jobs.values()));
-    return;
-  }
-
-  if (req.method === 'GET' && url.pathname.startsWith('/api/status/')) {
-    const jobId = url.pathname.split('/').filter(Boolean)[2];
-    const job = jobs.get(jobId);
-    if (!job) {
-      sendJson(res, 404, { error: 'Завдання не знайдено.' });
-      return;
-    }
-    sendJson(res, 200, job);
     return;
   }
 
@@ -194,10 +175,8 @@ const server = http.createServer(async (req, res) => {
       const outputFilename = `${path.parse(payload.filename).name}-formatted-${job.id}.docx`;
       const outputPath = path.join(outputDir, outputFilename);
 
-      const editOptions = coerceEditOptions(payload);
-
       sendJson(res, 202, { jobId: job.id });
-      processJob(job, inputPath, outputPath, outputFilename, editOptions);
+      processJob(job, inputPath, outputPath, outputFilename);
       return;
     } catch (error) {
       sendJson(res, 400, { error: error.message || 'Некоректний запит.' });
