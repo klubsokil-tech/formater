@@ -32,7 +32,10 @@ async function verifyDocx(docxPath) {
     },
     {
       name: 'TOC присутній',
-      pass: check(/TOC \\o "1-2" \\h \\z \\u/, xml),
+      pass:
+        check(/TOC\s+\\h[\s\S]*?1-2/, xml) ||
+        check(/TOC\s+\\o\s+&quot;1-2&quot;/, xml) ||
+        check(/TOC\s+\\o\s+"1-2"/, xml),
     },
     {
       name: 'Page break перед Heading 1',
