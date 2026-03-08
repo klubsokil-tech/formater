@@ -15,6 +15,13 @@ fs.mkdirSync(outputDir, { recursive: true });
 
 const jobs = new Map();
 
+function coerceEditOptions(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  if (payload.editOptions && typeof payload.editOptions === 'object') return payload.editOptions;
+  if (payload.options && typeof payload.options === 'object') return payload.options;
+  return {};
+}
+
 function sendJson(res, code, payload) {
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
@@ -120,6 +127,17 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname.startsWith('/api/status/')) {
+    const jobId = url.pathname.split('/').filter(Boolean)[2];
+    const job = jobs.get(jobId);
+    if (!job) {
+      sendJson(res, 404, { error: 'Завдання не знайдено.' });
+      return;
+    }
+    sendJson(res, 200, job);
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/api/jobs/')) {
     const parts = url.pathname.split('/').filter(Boolean);
     const jobId = parts[2];
@@ -176,7 +194,7 @@ const server = http.createServer(async (req, res) => {
       const outputFilename = `${path.parse(payload.filename).name}-formatted-${job.id}.docx`;
       const outputPath = path.join(outputDir, outputFilename);
 
-      const editOptions = payload.editOptions && typeof payload.editOptions === 'object' ? payload.editOptions : {};
+      const editOptions = coerceEditOptions(payload);
 
       sendJson(res, 202, { jobId: job.id });
       processJob(job, inputPath, outputPath, outputFilename, editOptions);

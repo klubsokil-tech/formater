@@ -75,8 +75,16 @@ function makeEmptyLine() {
   return new Paragraph({ children: [new TextRun({ text: '' })] });
 }
 
-function makeHeadingParagraph(text, type, config = DEFAULT_OPTIONS) {
-  const isH1 = type === 'h1';
+function resolveHeadingKind(levelOrType) {
+  if (levelOrType === HeadingLevel.HEADING_1) return 'h1';
+  if (levelOrType === HeadingLevel.HEADING_2) return 'h2';
+  if (levelOrType === 'h1' || levelOrType === 'h2') return levelOrType;
+  return 'h2';
+}
+
+function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
+  const headingKind = resolveHeadingKind(typeOrLevel);
+  const isH1 = headingKind === 'h1';
   const headingLevel = isH1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
   const headingText = isH1 ? text.toUpperCase() : text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -314,4 +322,5 @@ module.exports = {
   normalizeWhitespace,
   normalizeCitationBrackets,
   DEFAULT_OPTIONS,
+  resolveHeadingKind,
 };
