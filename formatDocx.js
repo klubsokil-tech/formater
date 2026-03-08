@@ -115,12 +115,12 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
     children: [
       makeRun(
         headingText,
-        config.applyHeadingStyles ? { bold: true } : {},
+        config.applyHeadingStyles ? { bold: true, color: '000000' } : {},
         config,
       ),
     ],
     heading: headingLevel,
-    alignment: isH1 ? AlignmentType.CENTER : AlignmentType.LEFT,
+    alignment: config.applyHeadingStyles ? AlignmentType.CENTER : (isH1 ? AlignmentType.CENTER : AlignmentType.LEFT),
     spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
     pageBreakBefore: isH1 && config.enforceSectionPageBreaks,
     indent: !isH1 && config.applyTextFormatting ? { firstLine: 709 } : undefined,
