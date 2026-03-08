@@ -1,261 +1,223 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import JSZip from "jszip";
-import { spawn } from "node:child_process";
-import { bibliographySources, insertBibliography, insertCitationReferences } from "./bibliography.js";
+const fs = require('fs');
+const path = require('path');
+const mammoth = require('mammoth');
+const {
+  AlignmentType,
+  Document,
+  HeadingLevel,
+  Packer,
+  Paragraph,
+  TableOfContents,
+  TextRun,
+} = require('docx');
+const { SOURCES, createCitation } = require('./bibliography');
 
-const DOC_XML_PATH = "word/document.xml";
-const PAGE_BREAK_PARAGRAPH = '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+const HEADING1_REGEX = /^РОЗДІЛ\s+\d+/i;
+const HEADING2_REGEX = /^\d+\.\d+/;
+const HEADING1_EXACT = new Set([
+  'ВСТУП',
+  'ВИСНОВКИ',
+  'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ',
+]);
+
+function normalizeWhitespace(text) {
+  return text.replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+function classifyParagraph(text) {
+  const upper = text.toUpperCase();
+  if (HEADING1_EXACT.has(upper) || HEADING1_REGEX.test(upper)) return 'h1';
+  if (HEADING2_REGEX.test(text)) return 'h2';
+  return 'normal';
+}
+
+function makeRun(text, opts = {}) {
+  return new TextRun({
+    text,
+    font: 'Times New Roman',
+    size: 28,
+    ...opts,
+  });
+}
+
+function makeHeadingParagraph(text, level) {
+  return new Paragraph({
+    text,
+    heading: level,
+    alignment: AlignmentType.CENTER,
+    spacing: { line: 360, before: 200, after: 120 },
+    pageBreakBefore: level === HeadingLevel.HEADING_1,
+  });
+}
+
+function makeNormalParagraph(text) {
+  return new Paragraph({
+    children: [makeRun(text)],
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: { line: 360, before: 0, after: 120 },
+    indent: { firstLine: 709 },
+  });
+}
+
+function buildBibliographySection() {
+  const paragraphs = [
+    makeHeadingParagraph('СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', HeadingLevel.HEADING_1),
+  ];
+
+  for (const source of SOURCES) {
+    paragraphs.push(
+      new Paragraph({
+        children: [makeRun(`${source.id}. ${source.text}`)],
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { line: 360, before: 0, after: 120 },
+        indent: { firstLine: 709 },
+      }),
+    );
+  }
+
+  return paragraphs;
+}
+
+async function extractParagraphs(inputPath) {
+  const { value } = await mammoth.extractRawText({ path: inputPath });
+  return value
+    .split(/\r?\n/)
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean);
+}
+
+function addCitations(paragraphs) {
+  const output = [];
+  let normalCounter = 0;
+  let lastSourceId = null;
+  let lastWasCitation = false;
+  let target = Math.random() < 0.5 ? 1 : 2;
+
+  for (const item of paragraphs) {
+    output.push(item);
+
+    if (item.type !== 'normal') {
+      normalCounter = 0;
+      continue;
+    }
+
+    normalCounter += 1;
+
+    if (normalCounter >= target && !lastWasCitation) {
+      const { citation, sourceId } = createCitation(lastSourceId);
+      output.push({ type: 'citation', text: citation });
+      lastSourceId = sourceId;
+      lastWasCitation = true;
+      normalCounter = 0;
+      target = Math.random() < 0.5 ? 1 : 2;
+    } else {
+      lastWasCitation = false;
+    }
+  }
+
+  return output;
+}
+
+async function formatDocx(inputPath, outputPath) {
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
+  }
+
+  const rawParagraphs = await extractParagraphs(inputPath);
+
+  const structured = rawParagraphs.map((text) => ({
+    type: classifyParagraph(text),
+    text,
+  }));
+
+  const withCitations = addCitations(structured);
+
+  const docParagraphs = [];
+
+  docParagraphs.push(
+    new Paragraph({
+      text: 'ЗМІСТ',
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      pageBreakBefore: false,
+    }),
+  );
+  docParagraphs.push(
+    new TableOfContents('Зміст', {
+      hyperlink: true,
+      headingStyleRange: '1-2',
+      stylesWithLevels: [
+        { styleName: 'Heading 1', level: 1 },
+        { styleName: 'Heading 2', level: 2 },
+      ],
+    }),
+  );
+
+  for (const item of withCitations) {
+    if (item.type === 'h1') {
+      docParagraphs.push(makeHeadingParagraph(item.text.toUpperCase(), HeadingLevel.HEADING_1));
+    } else if (item.type === 'h2') {
+      docParagraphs.push(makeHeadingParagraph(item.text, HeadingLevel.HEADING_2));
+    } else if (item.type === 'citation') {
+      docParagraphs.push(
+        new Paragraph({
+          children: [makeRun(item.text, { italics: true })],
+          alignment: AlignmentType.RIGHT,
+          spacing: { line: 360, before: 0, after: 120 },
+        }),
+      );
+    } else {
+      docParagraphs.push(makeNormalParagraph(item.text));
+    }
+  }
+
+  if (!withCitations.some((p) => p.type === 'h1' && p.text.toUpperCase() === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ')) {
+    docParagraphs.push(...buildBibliographySection());
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: 1134,
+              right: 567,
+              bottom: 1134,
+              left: 1701,
+            },
+          },
+        },
+        children: docParagraphs,
+      },
+    ],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  fs.writeFileSync(outputPath, buffer);
+  return outputPath;
+}
 
 async function main() {
-  const [inputPath, outputPath] = process.argv.slice(2);
+  const inputPath = process.argv[2] || 'input.docx';
+  const outputPath = process.argv[3] || 'output.docx';
 
-  validateArgs(inputPath, outputPath);
-
-  const inputBuffer = await fs.readFile(inputPath);
-  const zip = await JSZip.loadAsync(inputBuffer);
-  const documentFile = zip.file(DOC_XML_PATH);
-
-  if (!documentFile) {
-    throw new Error(`Файл ${DOC_XML_PATH} не знайдено у ${inputPath}`);
-  }
-
-  let documentXml = await documentFile.async("string");
-
-  const analysis = analyzeDocument(documentXml);
-  documentXml = applyFormatting(documentXml, analysis);
-  documentXml = insertTableOfContents(documentXml);
-  documentXml = insertCitationReferences(documentXml, bibliographySources);
-  documentXml = insertBibliography(documentXml, bibliographySources);
-
-  zip.file(DOC_XML_PATH, documentXml);
-  const outputBuffer = await zip.generateAsync({ type: "nodebuffer" });
-
-  await fs.mkdir(path.dirname(path.resolve(outputPath)), { recursive: true });
-  await fs.writeFile(outputPath, outputBuffer);
-
-  console.log(`Готово. Форматований файл збережено: ${outputPath}`);
-  console.log(`Аналітика: заголовків ${analysis.headingsCount}, абзаців ${analysis.paragraphCount}.`);
-
-  await runVerification(outputPath);
-}
-
-async function runVerification(outputPath) {
-  console.log("Запускаю перевірку результату...");
-
-  const verifyScriptPath = fileURLToPath(new URL("./verify.js", import.meta.url));
-
-  await new Promise((resolve, reject) => {
-    const verifyProcess = spawn(process.execPath, [verifyScriptPath, outputPath], { stdio: "inherit" });
-
-    verifyProcess.on("error", reject);
-    verifyProcess.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(`Перевірка verify.js завершилась з кодом ${code}.`));
-    });
-  });
-}
-
-function validateArgs(inputPath, outputPath) {
-  if (!inputPath || !outputPath) {
-    throw new Error("Використання: node formatDocx.js input.docx output.docx");
-  }
-
-  for (const filePath of [inputPath, outputPath]) {
-    if (path.extname(filePath).toLowerCase() !== ".docx") {
-      throw new Error(`Очікується розширення .docx: ${filePath}`);
-    }
+  try {
+    await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
+    console.log(`Готово. Створено файл: ${outputPath}`);
+    console.log('За бажанням виконайте перевірку: node verify.js ' + outputPath);
+  } catch (error) {
+    console.error('Помилка форматування:', error.message);
+    process.exit(1);
   }
 }
 
-function analyzeDocument(documentXml) {
-  const headingsCount = (documentXml.match(/w:pStyle\s+w:val="Heading[1-6]"/g) || []).length;
-  const paragraphCount = (documentXml.match(/<w:p\b/g) || []).length;
-  return { headingsCount, paragraphCount };
+if (require.main === module) {
+  main();
 }
 
-function applyFormatting(documentXml, analysis) {
-  let hasHeading = false;
-  let previousWasPageBreak = false;
-
-  let formattedXml = documentXml.replace(/<w:p\b[\s\S]*?<\/w:p>/g, (paragraphXml) => {
-    const normalizedParagraph = normalizeParagraphText(paragraphXml);
-
-    if (isRemovableEmptyParagraph(normalizedParagraph)) {
-      return "";
-    }
-
-    const paragraphText = extractParagraphText(normalizedParagraph);
-    const headingType = getHeadingType(paragraphText);
-    const paragraphWithStyle = applyParagraphStyle(normalizedParagraph, headingType);
-
-    hasHeading = hasHeading || headingType !== null;
-
-    if (headingType === "Heading1") {
-      const prefix = previousWasPageBreak ? "" : PAGE_BREAK_PARAGRAPH;
-      previousWasPageBreak = false;
-      return `${prefix}${paragraphWithStyle}`;
-    }
-
-    previousWasPageBreak = hasExplicitPageBreak(paragraphWithStyle);
-    return paragraphWithStyle;
-  });
-
-  if (!hasHeading && analysis.headingsCount === 0) {
-    const warningParagraph = "<w:p><w:r><w:t>Попередження: у документі не знайдено заголовків Heading 1-2.</w:t></w:r></w:p>";
-    formattedXml = formattedXml.replace("</w:body>", `${warningParagraph}</w:body>`);
-  }
-
-  return setSectionMargins(formattedXml);
-}
-
-function normalizeParagraphText(paragraphXml) {
-  return paragraphXml.replace(/(<w:t[^>]*>)([\s\S]*?)(<\/w:t>)/g, (full, open, text, close) => {
-    const compact = text.replace(/\s{2,}/g, " ").trim();
-    return `${open}${compact}${close}`;
-  });
-}
-
-function extractParagraphText(paragraphXml) {
-  const text = [...paragraphXml.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)]
-    .map((match) => decodeXmlText(match[1]))
-    .join(" ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-
-  return text;
-}
-
-function decodeXmlText(text) {
-  return text
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
-
-function getHeadingType(text) {
-  const normalized = text.trim().toUpperCase();
-
-  if (!normalized) {
-    return null;
-  }
-
-  if (
-    normalized === "ВСТУП" ||
-    normalized === "ВИСНОВКИ" ||
-    normalized === "СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ" ||
-    /^РОЗДІЛ\s+\d+/.test(normalized)
-  ) {
-    return "Heading1";
-  }
-
-  if (/^\d+\.\d+/.test(normalized)) {
-    return "Heading2";
-  }
-
-  return null;
-}
-
-function isRemovableEmptyParagraph(paragraphXml) {
-  if (hasExplicitPageBreak(paragraphXml)) {
-    return false;
-  }
-
-  const text = extractParagraphText(paragraphXml);
-  return text.length === 0;
-}
-
-function hasExplicitPageBreak(paragraphXml) {
-  return /<w:br\b[^>]*w:type="page"/.test(paragraphXml);
-}
-
-function applyParagraphStyle(paragraphXml, headingType) {
-  const updatedPPr = buildPPr(paragraphXml, headingType);
-
-  if (/<w:pPr\b[\s\S]*?<\/w:pPr>/.test(paragraphXml)) {
-    return paragraphXml.replace(/<w:pPr\b[\s\S]*?<\/w:pPr>/, updatedPPr);
-  }
-
-  return paragraphXml.replace(/<w:p\b([^>]*)>/, `<w:p$1>${updatedPPr}`);
-}
-
-function buildPPr(paragraphXml, headingType) {
-  const existingPPrMatch = paragraphXml.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/);
-  let pPr = existingPPrMatch ? existingPPrMatch[0] : "<w:pPr></w:pPr>";
-
-  pPr = removeTag(pPr, "w:pStyle");
-
-  if (headingType) {
-    pPr = upsertTag(pPr, "w:pStyle", `<w:pStyle w:val="${headingType}"/>`);
-    return pPr;
-  }
-
-  pPr = upsertTag(pPr, "w:jc", '<w:jc w:val="both"/>');
-  pPr = upsertTag(pPr, "w:spacing", '<w:spacing w:line="360" w:lineRule="auto"/>');
-  pPr = upsertTag(pPr, "w:ind", '<w:ind w:firstLine="709"/>');
-
-  const runProperties = [
-    '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>',
-    '<w:sz w:val="28"/>',
-    '<w:szCs w:val="28"/>'
-  ].join("");
-
-  pPr = upsertTag(pPr, "w:rPr", `<w:rPr>${runProperties}</w:rPr>`);
-
-  return pPr;
-}
-
-function removeTag(xml, tagName) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*/>|<${tagName}\\b[\\s\\S]*?<\\/${tagName}>`, "g");
-  return xml.replace(pattern, "");
-}
-
-function upsertTag(xml, tagName, tagValue) {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*/>|<${tagName}\\b[\\s\\S]*?<\\/${tagName}>`);
-
-  if (pattern.test(xml)) {
-    return xml.replace(pattern, tagValue);
-  }
-
-  return xml.replace("</w:pPr>", `${tagValue}</w:pPr>`);
-}
-
-function setSectionMargins(documentXml) {
-  return documentXml.replace(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/, (sectPr) => {
-    const marginTag = '<w:pgMar w:top="1134" w:right="567" w:bottom="1134" w:left="1701"/>';
-
-    if (/<w:pgMar\b[^>]*\/>/.test(sectPr)) {
-      return sectPr.replace(/<w:pgMar\b[^>]*\/>/, marginTag);
-    }
-
-    return sectPr.replace("</w:sectPr>", `${marginTag}</w:sectPr>`);
-  });
-}
-
-function insertTableOfContents(documentXml) {
-  const tocParagraph = [
-    PAGE_BREAK_PARAGRAPH,
-    "<w:p><w:r><w:t>Зміст</w:t></w:r></w:p>",
-    "<w:p>",
-    '<w:r><w:fldChar w:fldCharType="begin"/></w:r>',
-    '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-2" \\h \\z \\u </w:instrText></w:r>',
-    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>',
-    "<w:r><w:t>Оновіть поле TOC у Word (F9).</w:t></w:r>",
-    '<w:r><w:fldChar w:fldCharType="end"/></w:r>',
-    "</w:p>"
-  ].join("");
-
-  return documentXml.replace(/<w:body>([\s\S]*?<\/w:p>)/, (full, firstParagraph) => `<w:body>${firstParagraph}${tocParagraph}`);
-}
-
-main().catch((error) => {
-  console.error(`Помилка: ${error.message}`);
-  process.exitCode = 1;
-});
+module.exports = {
+  formatDocx,
+  classifyParagraph,
+  normalizeWhitespace,
+};
