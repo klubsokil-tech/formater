@@ -5,7 +5,6 @@ const {
   AlignmentType,
   Document,
   HeadingLevel,
-  PageOrientation,
   Packer,
   Paragraph,
   TableOfContents,
@@ -19,37 +18,10 @@ const HEADING1_EXACT = new Set([
   'ВСТУП',
   'ВИСНОВКИ',
   'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ',
-  'СПИСОК ДЖЕРЕЛ',
 ]);
-
-const DEFAULT_OPTIONS = {
-  addTOC: true,
-  addRandomCitations: true,
-  normalizeBracketCitations: true,
-  ensureBibliography: true,
-  bibliographySort: 'order', // order | alpha
-  applyPageSetup: true,
-  applyTextFormatting: true,
-  applyHeadingStyles: true,
-  enforceSectionPageBreaks: true,
-  addBlankLinesAroundHeadings: true,
-  preserveSpecialContent: true,
-};
 
 function normalizeWhitespace(text) {
   return text.replace(/[ \t]{2,}/g, ' ').trim();
-}
-
-function normalizeCitationBrackets(text) {
-  // [ 1 ] -> [1], [5 - 7] -> [5-7], [3,  с. 12] -> [3, с. 12]
-  return text.replace(/\[(.*?)\]/g, (_, inner) => {
-    const cleaned = inner
-      .replace(/\s*([-–])\s*/g, '$1')
-      .replace(/\s*,\s*/g, ', ')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    return `[${cleaned}]`;
-  });
 }
 
 function classifyParagraph(text) {
@@ -59,37 +31,18 @@ function classifyParagraph(text) {
   return 'normal';
 }
 
-function makeRun(text, opts = {}, config = DEFAULT_OPTIONS) {
-  const base = config.applyTextFormatting
-    ? { font: 'Times New Roman', size: 28 }
-    : {};
-
+function makeRun(text, opts = {}) {
   return new TextRun({
     text,
-    ...base,
+    font: 'Times New Roman',
+    size: 28,
     ...opts,
   });
 }
 
-function makeEmptyLine() {
-  return new Paragraph({ children: [new TextRun({ text: '' })] });
-}
-
-function resolveHeadingKind(levelOrType) {
-  if (levelOrType === HeadingLevel.HEADING_1) return 'h1';
-  if (levelOrType === HeadingLevel.HEADING_2) return 'h2';
-  if (levelOrType === 'h1' || levelOrType === 'h2') return levelOrType;
-  return 'h2';
-}
-
-function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
-  const headingKind = resolveHeadingKind(typeOrLevel);
-  const isH1 = headingKind === 'h1';
-  const headingLevel = isH1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
-  const headingText = isH1 ? text.toUpperCase() : text.charAt(0).toUpperCase() + text.slice(1);
-
+function makeHeadingParagraph(text, level) {
   return new Paragraph({
-    children: [makeRun(text)],
+    text,
     heading: level,
     alignment: AlignmentType.CENTER,
     spacing: { line: 360, before: 200, after: 120 },
@@ -97,37 +50,27 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
   });
 }
 
-function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
+function makeNormalParagraph(text) {
   return new Paragraph({
-    children: [makeRun(text, {}, config)],
-    alignment: config.applyTextFormatting ? AlignmentType.JUSTIFIED : undefined,
-    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
-    indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
+    children: [makeRun(text)],
+    alignment: AlignmentType.JUSTIFIED,
+    spacing: { line: 360, before: 0, after: 120 },
+    indent: { firstLine: 709 },
   });
 }
 
-function getSortedSources(mode) {
-  if (mode === 'alpha') {
-    return [...SOURCES].sort((a, b) => a.text.localeCompare(b.text, 'uk'));
-  }
-  return SOURCES;
-}
+function buildBibliographySection() {
+  const paragraphs = [
+    makeHeadingParagraph('СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', HeadingLevel.HEADING_1),
+  ];
 
-function buildBibliographySection(config = DEFAULT_OPTIONS) {
-  const sortedSources = getSortedSources(config.bibliographySort);
-  const paragraphs = [];
-
-  if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
-  paragraphs.push(makeHeadingParagraph('СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', 'h1', config));
-  if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
-
-  for (const source of sortedSources) {
+  for (const source of SOURCES) {
     paragraphs.push(
       new Paragraph({
-        children: [makeRun(`${source.id}. ${source.text}`, {}, config)],
-        alignment: config.applyTextFormatting ? AlignmentType.JUSTIFIED : undefined,
-        spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
-        indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
+        children: [makeRun(`${source.id}. ${source.text}`)],
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { line: 360, before: 0, after: 120 },
+        indent: { firstLine: 709 },
       }),
     );
   }
@@ -135,26 +78,20 @@ function buildBibliographySection(config = DEFAULT_OPTIONS) {
   return paragraphs;
 }
 
-async function extractParagraphs(inputPath, config) {
+async function extractParagraphs(inputPath) {
   const { value } = await mammoth.extractRawText({ path: inputPath });
   return value
     .split(/\r?\n/)
     .map((line) => normalizeWhitespace(line))
-    .map((line) => (config.normalizeBracketCitations ? normalizeCitationBrackets(line) : line))
     .filter(Boolean);
 }
 
-function addCitations(paragraphs, config) {
-  if (!config.addRandomCitations) {
-    return { paragraphs, citationsAdded: 0 };
-  }
-
+function addCitations(paragraphs) {
   const output = [];
   let normalCounter = 0;
   let lastSourceId = null;
   let lastWasCitation = false;
   let target = Math.random() < 0.5 ? 1 : 2;
-  let citationsAdded = 0;
 
   for (const item of paragraphs) {
     output.push(item);
@@ -173,43 +110,37 @@ function addCitations(paragraphs, config) {
       lastWasCitation = true;
       normalCounter = 0;
       target = Math.random() < 0.5 ? 1 : 2;
-      citationsAdded += 1;
     } else {
       lastWasCitation = false;
     }
   }
 
-  return {
-    paragraphs: output,
-    citationsAdded,
-  };
+  return output;
 }
 
-async function formatDocx(inputPath, outputPath, options = {}) {
-  const onProgress = options.onProgress || (() => {});
-
-  onProgress('Перевіряю вхідний файл...');
+async function formatDocx(inputPath, outputPath) {
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
   }
 
-  onProgress('Зчитую текст з DOCX...');
   const rawParagraphs = await extractParagraphs(inputPath);
 
-  onProgress('Класифікую заголовки та абзаци...');
   const structured = rawParagraphs.map((text) => ({
     type: classifyParagraph(text),
     text,
   }));
 
-  onProgress('Додаю випадкові посилання...');
-  const { paragraphs: withCitations, citationsAdded } = addCitations(structured);
+  const withCitations = addCitations(structured);
 
   const docParagraphs = [];
 
-  onProgress('Формую зміст та структуру документа...');
   docParagraphs.push(
-    makeHeadingParagraph('ЗМІСТ', HeadingLevel.HEADING_1),
+    new Paragraph({
+      text: 'ЗМІСТ',
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      pageBreakBefore: false,
+    }),
   );
   docParagraphs.push(
     new TableOfContents('Зміст', {
@@ -224,70 +155,47 @@ async function formatDocx(inputPath, outputPath, options = {}) {
 
   for (const item of withCitations) {
     if (item.type === 'h1') {
-      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
-      docParagraphs.push(makeHeadingParagraph(item.text, 'h1', config));
-      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+      docParagraphs.push(makeHeadingParagraph(item.text.toUpperCase(), HeadingLevel.HEADING_1));
     } else if (item.type === 'h2') {
-      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
-      docParagraphs.push(makeHeadingParagraph(item.text, 'h2', config));
-      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+      docParagraphs.push(makeHeadingParagraph(item.text, HeadingLevel.HEADING_2));
     } else if (item.type === 'citation') {
       docParagraphs.push(
         new Paragraph({
-          children: [makeRun(item.text, { italics: true }, config)],
-          alignment: config.applyTextFormatting ? AlignmentType.RIGHT : undefined,
-          spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+          children: [makeRun(item.text, { italics: true })],
+          alignment: AlignmentType.RIGHT,
+          spacing: { line: 360, before: 0, after: 120 },
         }),
       );
     } else {
-      docParagraphs.push(makeNormalParagraph(item.text, config));
+      docParagraphs.push(makeNormalParagraph(item.text));
     }
   }
 
-  let bibliographyAdded = false;
   if (!withCitations.some((p) => p.type === 'h1' && p.text.toUpperCase() === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ')) {
     docParagraphs.push(...buildBibliographySection());
-    bibliographyAdded = true;
   }
-
-  const sectionProperties = config.applyPageSetup
-    ? {
-        page: {
-          margin: {
-            top: 1134,
-            right: 567,
-            bottom: 1134,
-            left: 1701,
-          },
-          size: {
-            orientation: PageOrientation.PORTRAIT,
-          },
-        },
-      }
-    : {};
 
   const doc = new Document({
     sections: [
       {
-        properties: sectionProperties,
+        properties: {
+          page: {
+            margin: {
+              top: 1134,
+              right: 567,
+              bottom: 1134,
+              left: 1701,
+            },
+          },
+        },
         children: docParagraphs,
       },
     ],
   });
 
-  onProgress('Зберігаю відформатований файл...');
   const buffer = await Packer.toBuffer(doc);
   fs.writeFileSync(outputPath, buffer);
-
-  return {
-    outputPath,
-    stats: {
-      sourceParagraphs: rawParagraphs.length,
-      outputParagraphs: docParagraphs.length,
-      citationsAdded,
-      bibliographyAdded,
-    },
-  };
+  return outputPath;
 }
 
 async function main() {
@@ -295,8 +203,8 @@ async function main() {
   const outputPath = process.argv[3] || 'output.docx';
 
   try {
-    const result = await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
-    console.log(`Готово. Створено файл: ${result.outputPath}`);
+    await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
+    console.log(`Готово. Створено файл: ${outputPath}`);
     console.log('За бажанням виконайте перевірку: node verify.js ' + outputPath);
   } catch (error) {
     console.error('Помилка форматування:', error.message);
@@ -312,7 +220,4 @@ module.exports = {
   formatDocx,
   classifyParagraph,
   normalizeWhitespace,
-  normalizeCitationBrackets,
-  DEFAULT_OPTIONS,
-  resolveHeadingKind,
 };
