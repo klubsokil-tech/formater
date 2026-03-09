@@ -41,6 +41,8 @@ const DEFAULT_OPTIONS = {
   optionModes: {},
   citationsPerPage: 2,
   insertionPointsPerPage: 6,
+  stripBetweenStart: '',
+  stripBetweenEnd: '',
 };
 
 function sanitizeEditOptions(raw = {}) {
@@ -84,6 +86,9 @@ function sanitizeEditOptions(raw = {}) {
     .map((item) => String(item || '').trim())
     .filter(Boolean);
 
+  merged.stripBetweenStart = String(merged.stripBetweenStart || '').trim();
+  merged.stripBetweenEnd = String(merged.stripBetweenEnd || '').trim();
+
   if (merged.removeRandomCitations) {
     merged.addRandomCitations = false;
   }
@@ -112,6 +117,15 @@ function removeBracketNumberCitations(text) {
     .replace(/\s*\[\d+\]\s*/g, ' ')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
+}
+
+function removeBetweenMarkers(text, startMarker, endMarker) {
+  if (!startMarker || !endMarker) return text;
+
+  const escapedStart = startMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedEnd = endMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}`, 'g');
+  return text.replace(pattern, ' ');
 }
 
 function classifyParagraph(text) {
@@ -149,6 +163,7 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
   const isH1 = headingKind === 'h1';
   const headingLevel = isH1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
   const headingText = isH1 ? text.toUpperCase() : text.charAt(0).toUpperCase() + text.slice(1);
+  const isBibliographyHeading = headingText === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ';
 
   return new Paragraph({
     children: [
@@ -159,7 +174,7 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
       ),
     ],
     heading: headingLevel,
-    alignment: config.applyHeadingStyles ? AlignmentType.CENTER : (isH1 ? AlignmentType.CENTER : AlignmentType.LEFT),
+    alignment: isBibliographyHeading ? AlignmentType.JUSTIFIED : (config.applyHeadingStyles ? AlignmentType.CENTER : (isH1 ? AlignmentType.CENTER : AlignmentType.LEFT)),
     spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
     pageBreakBefore: isH1 && config.enforceSectionPageBreaks,
     indent: !isH1 && config.applyTextFormatting ? { firstLine: 709 } : undefined,
@@ -167,14 +182,24 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
 }
 
 function insertCitationInline(text, citation, anchorRatio = null) {
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length < 3) return `${text} ${citation}`.trim();
-
   const ratio = anchorRatio === null ? Math.random() : Math.max(0.05, Math.min(0.95, anchorRatio));
-  const idx = Math.max(1, Math.min(words.length - 1, Math.floor((words.length - 1) * ratio)));
-  words.splice(idx, 0, citation);
-  return words.join(' ');
+
+  const sentenceMatches = [...text.matchAll(/[^.]+\./g)];
+  if (sentenceMatches.length > 0) {
+    const sentencePos = Math.min(sentenceMatches.length - 1, Math.floor(sentenceMatches.length * ratio));
+    const sentence = sentenceMatches[sentencePos];
+    const sentenceEndIndex = sentence.index + sentence[0].length - 1;
+    return `${text.slice(0, sentenceEndIndex)} ${citation}${text.slice(sentenceEndIndex)}`.replace(/[ 	]{2,}/g, ' ');
+  }
+
+  const fallbackDotIndex = text.lastIndexOf('.');
+  if (fallbackDotIndex >= 0) {
+    return `${text.slice(0, fallbackDotIndex)} ${citation}${text.slice(fallbackDotIndex)}`.replace(/[ 	]{2,}/g, ' ');
+  }
+
+  return `${text} ${citation}`.replace(/[ 	]{2,}/g, ' ').trim();
 }
+
 
 function parseListItem(text) {
   const m = text.match(/^\s*((?:[-•*])|(?:\d+[\.)]))\s+(.*)$/);
@@ -188,7 +213,7 @@ function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
     return new Paragraph({
       children: [makeRun(`${listItem.marker}	${listItem.content}`, {}, config)],
       alignment: config.applyTextFormatting ? AlignmentType.LEFT : undefined,
-      spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+      spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
       indent: config.applyTextFormatting ? { left: 709, hanging: 360 } : undefined,
     });
   }
@@ -196,7 +221,7 @@ function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
   return new Paragraph({
     children: [makeRun(text, {}, config)],
     alignment: config.applyTextFormatting ? (config.justifyDocument ? AlignmentType.JUSTIFIED : AlignmentType.LEFT) : undefined,
-    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
     indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
   });
 }
@@ -246,6 +271,7 @@ async function extractParagraphs(inputPath, config) {
   const paragraphs = value
     .split(/\r?\n/)
     .map((line) => normalizeWhitespace(line))
+    .map((line) => removeBetweenMarkers(line, config.stripBetweenStart, config.stripBetweenEnd))
     .map((line) => (config.normalizeBracketCitations ? normalizeCitationBrackets(line) : line))
     .map((line) => {
       if (!config.removeRandomCitations) return line;
@@ -502,6 +528,7 @@ module.exports = {
   normalizeWhitespace,
   normalizeCitationBrackets,
   removeBracketNumberCitations,
+  removeBetweenMarkers,
   insertCitationInline,
   parseListItem,
   DEFAULT_OPTIONS,

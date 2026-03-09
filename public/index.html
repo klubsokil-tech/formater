@@ -14,7 +14,7 @@
       .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; }
       .full { grid-column:1 / -1; }
       label { display:block; font-size:14px; }
-      input[type="file"], select, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff; }
+      input[type="file"], input[type="text"], select, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff; }
       .option-row { display:grid; grid-template-columns:1fr 150px; gap:10px; align-items:center; }
       .hint { background:#fff9e9; border-left:4px solid #ffd36b; border-radius:8px; padding:10px; }
       button { border:0; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; padding:10px 16px; cursor:pointer; }
@@ -58,6 +58,14 @@
             <label class="full">Кількість точок вставки на сторінку: <b id="insertionPointsPerPageValue">6</b>
               <input id="insertionPointsPerPage" type="range" min="1" max="12" step="1" value="6" />
             </label>
+            <div class="option-row full">
+              <label>Видалити між символами (початок)</label>
+              <input id="stripBetweenStart" type="text" placeholder="Наприклад: {{" />
+            </div>
+            <div class="option-row full">
+              <label>Видалити між символами (кінець)</label>
+              <input id="stripBetweenEnd" type="text" placeholder="Наприклад: }}" />
+            </div>
             <label class="full">Сортування джерел:
               <select id="bibliographySort"><option value="order" selected>Порядок згадування</option><option value="alpha">За алфавітом</option></select>
             </label>
@@ -69,7 +77,7 @@
 
           <p><button type="submit">Запустити форматування</button></p>
         </form>
-        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Нормалізація посилань у дужках уніфікує вигляд на зразок [ 1 ] → [1], [5 - 7] → [5-7]. Решта списків через нумерацію або маркери ( - ) або інші. Посилання не вставляються у списки, розділи «ВСТУП» та «ВИСНОВКИ», а також у короткі рядки (не на всю ширину сторінки).</p>
+        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Нормалізація посилань у дужках уніфікує вигляд на зразок [ 1 ] → [1], [5 - 7] → [5-7]. Решта списків через нумерацію або маркери ( - ) або інші. Посилання вставляються перед крапкою в кінці речення. Посилання не вставляються у списки, розділи «ВСТУП» та «ВИСНОВКИ», а також у короткі рядки (не на всю ширину сторінки).</p>
       </div>
 
       <div class="card">
@@ -123,6 +131,8 @@
           bibliographySort: document.getElementById('bibliographySort').value,
           citationsPerPage: Number(document.getElementById('citationsPerPage').value),
           insertionPointsPerPage: Number(document.getElementById('insertionPointsPerPage').value),
+          stripBetweenStart: document.getElementById('stripBetweenStart').value,
+          stripBetweenEnd: document.getElementById('stripBetweenEnd').value,
           customSources: document.getElementById('customSources').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
         };
       }
@@ -141,6 +151,7 @@
             <li>Ціль точок вставки: <b>${stats.insertionPointsTarget ?? "-"}</b></li>
             <li>Налаштовано посилань/сторінку: <b>${stats.optionsUsed?.citationsPerPage ?? '-'}</b></li>
             <li>Налаштовано точок вставки/сторінку: <b>${stats.optionsUsed?.insertionPointsPerPage ?? '-'}</b></li>
+            <li>Символи вирізання: <b>${stats.optionsUsed?.stripBetweenStart || '-'} ... ${stats.optionsUsed?.stripBetweenEnd || '-'}</b></li>
             <li>Видалено посилань: <b>${stats.citationsRemoved ?? 0}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
             <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>
