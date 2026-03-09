@@ -55,6 +55,9 @@
             <label class="full">Кількість посилань на сторінку: <b id="citationsPerPageValue">2</b>
               <input id="citationsPerPage" type="range" min="1" max="6" step="1" value="2" />
             </label>
+            <label class="full">Кількість точок вставки на сторінку: <b id="insertionPointsPerPageValue">6</b>
+              <input id="insertionPointsPerPage" type="range" min="1" max="12" step="1" value="6" />
+            </label>
             <label class="full">Сортування джерел:
               <select id="bibliographySort"><option value="order" selected>Порядок згадування</option><option value="alpha">За алфавітом</option></select>
             </label>
@@ -97,6 +100,9 @@
       const citationsPerPageEl = document.getElementById('citationsPerPage');
       const citationsPerPageValueEl = document.getElementById('citationsPerPageValue');
       citationsPerPageEl.addEventListener('input', () => { citationsPerPageValueEl.textContent = citationsPerPageEl.value; });
+      const insertionPointsPerPageEl = document.getElementById('insertionPointsPerPage');
+      const insertionPointsPerPageValueEl = document.getElementById('insertionPointsPerPageValue');
+      insertionPointsPerPageEl.addEventListener('input', () => { insertionPointsPerPageValueEl.textContent = insertionPointsPerPageEl.value; });
 
       function getEditOptions() {
         return {
@@ -116,6 +122,7 @@
           },
           bibliographySort: document.getElementById('bibliographySort').value,
           citationsPerPage: Number(document.getElementById('citationsPerPage').value),
+          insertionPointsPerPage: Number(document.getElementById('insertionPointsPerPage').value),
           customSources: document.getElementById('customSources').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
         };
       }
@@ -131,7 +138,9 @@
           <ul>
             <li>Додано посилань: <b>${stats.citationsAdded}</b></li>
             <li>Ціль посилань: <b>${stats.citationsTarget ?? "-"}</b></li>
+            <li>Ціль точок вставки: <b>${stats.insertionPointsTarget ?? "-"}</b></li>
             <li>Налаштовано посилань/сторінку: <b>${stats.optionsUsed?.citationsPerPage ?? '-'}</b></li>
+            <li>Налаштовано точок вставки/сторінку: <b>${stats.optionsUsed?.insertionPointsPerPage ?? '-'}</b></li>
             <li>Видалено посилань: <b>${stats.citationsRemoved ?? 0}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
             <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>

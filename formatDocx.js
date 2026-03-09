@@ -40,6 +40,7 @@ const DEFAULT_OPTIONS = {
   justifyDocument: true,
   optionModes: {},
   citationsPerPage: 2,
+  insertionPointsPerPage: 6,
 };
 
 function sanitizeEditOptions(raw = {}) {
@@ -76,6 +77,7 @@ function sanitizeEditOptions(raw = {}) {
   merged.bibliographySort = merged.bibliographySort === 'alpha' ? 'alpha' : 'order';
 
   merged.citationsPerPage = Number.isFinite(Number(merged.citationsPerPage)) ? Math.max(1, Math.min(6, Number(merged.citationsPerPage))) : 2;
+  merged.insertionPointsPerPage = Number.isFinite(Number(merged.insertionPointsPerPage)) ? Math.max(1, Math.min(12, Number(merged.insertionPointsPerPage))) : 6;
 
   const rawSources = Array.isArray(merged.customSources) ? merged.customSources : [];
   merged.customSources = rawSources
@@ -164,10 +166,12 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
   });
 }
 
-function insertCitationInline(text, citation) {
+function insertCitationInline(text, citation, anchorRatio = null) {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length < 3) return `${text} ${citation}`.trim();
-  const idx = Math.max(1, Math.min(words.length - 1, Math.floor(Math.random() * (words.length - 1))));
+
+  const ratio = anchorRatio === null ? Math.random() : Math.max(0.05, Math.min(0.95, anchorRatio));
+  const idx = Math.max(1, Math.min(words.length - 1, Math.floor((words.length - 1) * ratio)));
   words.splice(idx, 0, citation);
   return words.join(' ');
 }
@@ -256,7 +260,7 @@ async function extractParagraphs(inputPath, config) {
 
 function addCitations(paragraphs, config) {
   if (!config.addRandomCitations) {
-    return { paragraphs, citationsAdded: 0, citationsTarget: 0 };
+    return { paragraphs, citationsAdded: 0, citationsTarget: 0, insertionPointsTarget: 0 };
   }
 
   const EXCLUDED_SECTIONS = new Set(['ВСТУП', 'ВИСНОВКИ']);
@@ -266,7 +270,7 @@ function addCitations(paragraphs, config) {
 
   let currentSection = null;
   let totalEligibleWords = 0;
-  const eligibleIndexes = [];
+  const eligiblePoints = [];
 
   for (let i = 0; i < paragraphs.length; i += 1) {
     const item = paragraphs[i];
@@ -289,24 +293,46 @@ function addCitations(paragraphs, config) {
       continue;
     }
 
-    eligibleIndexes.push(i);
+    const pointsInParagraph = Math.max(1, Math.min(3, Math.floor(words.length / 40) + 1));
+    for (let point = 0; point < pointsInParagraph; point += 1) {
+      eligiblePoints.push({
+        index: i,
+        ratio: (point + 1) / (pointsInParagraph + 1),
+      });
+    }
+
     totalEligibleWords += words.length;
   }
 
-  if (eligibleIndexes.length === 0) {
-    return { paragraphs, citationsAdded: 0, citationsTarget: 0 };
+  if (eligiblePoints.length === 0) {
+    return { paragraphs, citationsAdded: 0, citationsTarget: 0, insertionPointsTarget: 0 };
   }
 
   const estimatedPages = Math.max(1, Math.round(totalEligibleWords / WORDS_PER_PAGE_ESTIMATE));
-  const citationsTarget = Math.min(eligibleIndexes.length, estimatedPages * config.citationsPerPage);
+  const insertionPointsTarget = Math.min(eligiblePoints.length, estimatedPages * config.insertionPointsPerPage);
+  const citationsTarget = Math.min(insertionPointsTarget, estimatedPages * config.citationsPerPage);
 
-  const chosen = new Set();
+  const selectedPoints = [];
+  for (let k = 0; k < insertionPointsTarget; k += 1) {
+    const pos = Math.floor(((k + 0.5) * eligiblePoints.length) / insertionPointsTarget);
+    const boundedPos = Math.max(0, Math.min(eligiblePoints.length - 1, pos));
+    selectedPoints.push(eligiblePoints[boundedPos]);
+  }
+
+  const citationPoints = [];
   if (citationsTarget > 0) {
     for (let k = 0; k < citationsTarget; k += 1) {
-      const pos = Math.floor(((k + 0.5) * eligibleIndexes.length) / citationsTarget);
-      const boundedPos = Math.max(0, Math.min(eligibleIndexes.length - 1, pos));
-      chosen.add(eligibleIndexes[boundedPos]);
+      const pos = Math.floor(((k + 0.5) * selectedPoints.length) / citationsTarget);
+      const boundedPos = Math.max(0, Math.min(selectedPoints.length - 1, pos));
+      citationPoints.push(selectedPoints[boundedPos]);
     }
+  }
+
+  const byParagraph = new Map();
+  for (const point of citationPoints) {
+    const arr = byParagraph.get(point.index) || [];
+    arr.push(point.ratio);
+    byParagraph.set(point.index, arr);
   }
 
   const output = [];
@@ -315,17 +341,26 @@ function addCitations(paragraphs, config) {
 
   for (let i = 0; i < paragraphs.length; i += 1) {
     const item = paragraphs[i];
-    if (chosen.has(i)) {
+    const ratios = byParagraph.get(i);
+
+    if (!ratios || ratios.length === 0) {
+      output.push(item);
+      continue;
+    }
+
+    let text = item.text;
+    ratios.sort((a, b) => a - b);
+    for (const ratio of ratios) {
       const { citation, sourceId } = createCitation(lastSourceId);
-      output.push({ ...item, text: insertCitationInline(item.text, citation) });
+      text = insertCitationInline(text, citation, ratio);
       lastSourceId = sourceId;
       citationsAdded += 1;
-    } else {
-      output.push(item);
     }
+
+    output.push({ ...item, text });
   }
 
-  return { paragraphs: output, citationsAdded, citationsTarget };
+  return { paragraphs: output, citationsAdded, citationsTarget, insertionPointsTarget };
 }
 
 
@@ -347,7 +382,7 @@ async function formatDocx(inputPath, outputPath, options = {}) {
   const structured = rawParagraphs.map((text) => ({ type: classifyParagraph(text), text }));
 
   onProgress('Обробляю посилання та структуру...');
-  const { paragraphs: withCitations, citationsAdded, citationsTarget } = addCitations(structured, config);
+  const { paragraphs: withCitations, citationsAdded, citationsTarget, insertionPointsTarget } = addCitations(structured, config);
 
   const docParagraphs = [];
 
@@ -432,6 +467,7 @@ async function formatDocx(inputPath, outputPath, options = {}) {
       outputParagraphs: docParagraphs.length,
       citationsAdded,
       citationsTarget,
+      insertionPointsTarget,
       citationsRemoved,
       bibliographyAdded,
       bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
