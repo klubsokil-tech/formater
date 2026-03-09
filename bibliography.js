@@ -27,9 +27,8 @@ function pickRandomSource(lastSourceId) {
 
 function createCitation(lastSourceId) {
   const source = pickRandomSource(lastSourceId);
-  const page = randomInt(1, source.pages);
   return {
-    citation: `[${source.id}, с. ${page}]`,
+    citation: `[${source.id}]`,
     sourceId: source.id,
   };
 }

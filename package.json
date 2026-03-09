@@ -7,7 +7,9 @@
   "scripts": {
     "format": "node formatDocx.js",
     "verify": "node verify.js",
-    "format:default": "node formatDocx.js \"Розділ_3_Практичний_аналіз_функціонування_іншомовної_лексики_в_корейських.docx\" output.docx"
+    "format:default": "node formatDocx.js \"Розділ_3_Практичний_аналіз_функціонування_іншомовної_лексики_в_корейських.docx\" output.docx",
+    "ui": "node server.js",
+    "ui:local": "node server.js"
   },
   "keywords": [
     "docx",
