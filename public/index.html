@@ -49,9 +49,7 @@
             <div class="option-row"><label>Нормалізація посилань у дужках</label><select id="mode-normalizeBracketCitations"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
             <div class="option-row"><label>Додавати список джерел, якщо нема</label><select id="mode-ensureBibliography"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
             <div class="option-row"><label>Зберігати спецконтент (корейські символи)</label><select id="mode-preserveSpecialContent"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
-            <div class="option-row"><label>Зберігати зовнішній вигляд таблиць</label><select id="mode-preserveTablesAppearance"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
-            <div class="option-row"><label>Зберігати структуру таблиць (пріоритетно)</label><select id="mode-preserveTablesStructure"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
-
+            
             <label class="full">Сортування джерел:
               <select id="bibliographySort"><option value="order" selected>Порядок згадування</option><option value="alpha">За алфавітом</option></select>
             </label>
@@ -63,7 +61,7 @@
 
           <p><button type="submit">Запустити форматування</button></p>
         </form>
-        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Для таблиць рекомендується залишити «Зберігати структуру таблиць: Додати».</p>
+        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Нормалізація посилань у дужках уніфікує вигляд на зразок [ 1 ] → [1], [5 - 7] → [5-7].</p>
       </div>
 
       <div class="card">
@@ -107,8 +105,6 @@
             enforceSectionPageBreaks: mode('enforceSectionPageBreaks'),
             addBlankLinesAroundHeadings: mode('addBlankLinesAroundHeadings'),
             preserveSpecialContent: mode('preserveSpecialContent'),
-            preserveTablesAppearance: mode('preserveTablesAppearance'),
-            preserveTablesStructure: mode('preserveTablesStructure'),
           },
           bibliographySort: document.getElementById('bibliographySort').value,
           customSources: document.getElementById('customSources').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),

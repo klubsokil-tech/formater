@@ -37,8 +37,6 @@ const DEFAULT_OPTIONS = {
   enforceSectionPageBreaks: true,
   addBlankLinesAroundHeadings: true,
   preserveSpecialContent: true,
-  preserveTablesAppearance: true,
-  preserveTablesStructure: true,
   justifyDocument: true,
   optionModes: {},
 };
@@ -58,8 +56,6 @@ function sanitizeEditOptions(raw = {}) {
     'enforceSectionPageBreaks',
     'addBlankLinesAroundHeadings',
     'preserveSpecialContent',
-    'preserveTablesAppearance',
-    'preserveTablesStructure',
     'justifyDocument',
   ];
 
@@ -165,7 +161,31 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
   });
 }
 
+function insertCitationInline(text, citation) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return `${text} ${citation}`.trim();
+  const idx = Math.max(1, Math.min(words.length - 1, Math.floor(Math.random() * (words.length - 1))));
+  words.splice(idx, 0, citation);
+  return words.join(' ');
+}
+
+function parseListItem(text) {
+  const m = text.match(/^\s*((?:[-•*])|(?:\d+[\.)]))\s+(.*)$/);
+  if (!m) return null;
+  return { marker: m[1], content: m[2] };
+}
+
 function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
+  const listItem = parseListItem(text);
+  if (listItem) {
+    return new Paragraph({
+      children: [makeRun(`${listItem.marker}	${listItem.content}`, {}, config)],
+      alignment: config.applyTextFormatting ? AlignmentType.LEFT : undefined,
+      spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+      indent: config.applyTextFormatting ? { left: 709, hanging: 360 } : undefined,
+    });
+  }
+
   return new Paragraph({
     children: [makeRun(text, {}, config)],
     alignment: config.applyTextFormatting ? (config.justifyDocument ? AlignmentType.JUSTIFIED : AlignmentType.LEFT) : undefined,
@@ -255,7 +275,7 @@ function addCitations(paragraphs, config) {
 
     if (normalCounter >= target && !lastWasCitation) {
       const { citation, sourceId } = createCitation(lastSourceId);
-      output.push({ type: 'citation', text: citation });
+      output[output.length - 1] = { ...item, text: insertCitationInline(item.text, citation) };
       lastSourceId = sourceId;
       lastWasCitation = true;
       normalCounter = 0;
@@ -280,29 +300,6 @@ async function formatDocx(inputPath, outputPath, options = {}) {
 
   onProgress('Перевіряю наявність таблиць...');
   const hasTables = await inputHasTables(inputPath);
-
-  if (hasTables && config.preserveTablesStructure) {
-    onProgress('Знайдено таблиці: зберігаю структуру та розмітку оригіналу...');
-    fs.copyFileSync(inputPath, outputPath);
-    return {
-      outputPath,
-      stats: {
-        sourceParagraphs: 0,
-        outputParagraphs: 0,
-        citationsAdded: 0,
-        citationsRemoved: 0,
-        bibliographyAdded: false,
-        bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
-        optionsUsed: config,
-        notes: [
-          'Виявлено таблиці: файл збережено без перебудови, щоб коректно зберегти структуру, відступи та розмітку таблиць.',
-        ],
-        hasTables,
-        preservedOriginalForTables: true,
-      },
-    };
-  }
-
   onProgress('Зчитую текст з DOCX...');
   const { paragraphs: rawParagraphs, citationsRemoved } = await extractParagraphs(inputPath, config);
 
@@ -340,14 +337,6 @@ async function formatDocx(inputPath, outputPath, options = {}) {
       if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
       docParagraphs.push(makeHeadingParagraph(item.text, 'h2', config));
       if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
-    } else if (item.type === 'citation') {
-      docParagraphs.push(
-        new Paragraph({
-          children: [makeRun(item.text, { italics: true }, config)],
-          alignment: config.applyTextFormatting ? AlignmentType.RIGHT : undefined,
-          spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
-        }),
-      );
     } else {
       docParagraphs.push(makeNormalParagraph(item.text, config));
     }
@@ -390,12 +379,10 @@ async function formatDocx(inputPath, outputPath, options = {}) {
 
   const notes = [];
   if (config.preserveSpecialContent) {
-    notes.push('Корейські символи в тексті зберігаються як є.');
+    notes.push('Усі символи у тексті зберігаються як є (включно з корейськими та спеціальними символами).');
   }
   if (hasTables) {
-    notes.push(config.preserveTablesAppearance
-      ? 'У вхідному файлі знайдено таблиці: поточний engine може втрачати частину візуального оформлення таблиць. Рекомендується ручна перевірка таблиць у результаті.'
-      : 'У вхідному файлі знайдено таблиці: режим збереження зовнішнього вигляду таблиць вимкнено.');
+    notes.push('У вхідному файлі знайдено таблиці: структура та розмітка таблиць збережені настільки, наскільки це підтримує DOCX engine. Перевірте таблиці вручну у Word.');
   }
 
   return {
@@ -438,6 +425,8 @@ module.exports = {
   normalizeWhitespace,
   normalizeCitationBrackets,
   removeBracketNumberCitations,
+  insertCitationInline,
+  parseListItem,
   DEFAULT_OPTIONS,
   resolveHeadingKind,
   sanitizeEditOptions,
