@@ -253,48 +253,71 @@ async function extractParagraphs(inputPath, config) {
 
 function addCitations(paragraphs, config) {
   if (!config.addRandomCitations) {
-    return { paragraphs, citationsAdded: 0 };
+    return { paragraphs, citationsAdded: 0, citationsTarget: 0 };
   }
 
-  const NORMAL_PARAGRAPHS_PER_PAGE = 12;
-  const output = [];
-  let normalOnPage = 0;
-  let citationsOnPage = 0;
-  let targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
-  let lastSourceId = null;
-  let citationsAdded = 0;
+  const EXCLUDED_SECTIONS = new Set(['ВСТУП', 'ВИСНОВКИ']);
+  const WORDS_PER_PAGE_ESTIMATE = 260;
 
-  for (const item of paragraphs) {
-    output.push(item);
+  let currentSection = null;
+  let totalEligibleWords = 0;
+  const eligibleIndexes = [];
+
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const item = paragraphs[i];
+
+    if (item.type === 'h1') {
+      currentSection = item.text.toUpperCase();
+      continue;
+    }
 
     if (item.type !== 'normal') {
       continue;
     }
 
-    normalOnPage += 1;
-
-    const remainingNormalsInPage = Math.max(1, NORMAL_PARAGRAPHS_PER_PAGE - normalOnPage + 1);
-    const citationsStillNeeded = Math.max(0, targetCitationsOnPage - citationsOnPage);
-    const mustInsertNow = citationsStillNeeded >= remainingNormalsInPage;
-    const randomInsert = Math.random() < (citationsStillNeeded / remainingNormalsInPage);
-
-    if (citationsStillNeeded > 0 && (mustInsertNow || randomInsert)) {
-      const { citation, sourceId } = createCitation(lastSourceId);
-      output[output.length - 1] = { ...item, text: insertCitationInline(item.text, citation) };
-      lastSourceId = sourceId;
-      citationsOnPage += 1;
-      citationsAdded += 1;
+    const isList = Boolean(parseListItem(item.text));
+    const isExcludedSection = currentSection && EXCLUDED_SECTIONS.has(currentSection);
+    if (isList || isExcludedSection) {
+      continue;
     }
 
-    if (normalOnPage >= NORMAL_PARAGRAPHS_PER_PAGE) {
-      normalOnPage = 0;
-      citationsOnPage = 0;
-      targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
+    eligibleIndexes.push(i);
+    totalEligibleWords += item.text.split(/\s+/).filter(Boolean).length;
+  }
+
+  if (eligibleIndexes.length === 0) {
+    return { paragraphs, citationsAdded: 0, citationsTarget: 0 };
+  }
+
+  const estimatedPages = Math.max(1, Math.round(totalEligibleWords / WORDS_PER_PAGE_ESTIMATE));
+  let citationsTarget = 0;
+  for (let i = 0; i < estimatedPages; i += 1) {
+    citationsTarget += Math.random() < 0.5 ? 2 : 3;
+  }
+  citationsTarget = Math.min(citationsTarget, eligibleIndexes.length);
+
+  const shuffled = [...eligibleIndexes].sort(() => Math.random() - 0.5);
+  const chosen = new Set(shuffled.slice(0, citationsTarget));
+
+  const output = [];
+  let lastSourceId = null;
+  let citationsAdded = 0;
+
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const item = paragraphs[i];
+    if (chosen.has(i)) {
+      const { citation, sourceId } = createCitation(lastSourceId);
+      output.push({ ...item, text: insertCitationInline(item.text, citation) });
+      lastSourceId = sourceId;
+      citationsAdded += 1;
+    } else {
+      output.push(item);
     }
   }
 
-  return { paragraphs: output, citationsAdded };
+  return { paragraphs: output, citationsAdded, citationsTarget };
 }
+
 
 async function formatDocx(inputPath, outputPath, options = {}) {
   const onProgress = options.onProgress || (() => {});
@@ -314,7 +337,7 @@ async function formatDocx(inputPath, outputPath, options = {}) {
   const structured = rawParagraphs.map((text) => ({ type: classifyParagraph(text), text }));
 
   onProgress('Обробляю посилання та структуру...');
-  const { paragraphs: withCitations, citationsAdded } = addCitations(structured, config);
+  const { paragraphs: withCitations, citationsAdded, citationsTarget } = addCitations(structured, config);
 
   const docParagraphs = [];
 
@@ -398,6 +421,7 @@ async function formatDocx(inputPath, outputPath, options = {}) {
       sourceParagraphs: rawParagraphs.length,
       outputParagraphs: docParagraphs.length,
       citationsAdded,
+      citationsTarget,
       citationsRemoved,
       bibliographyAdded,
       bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
