@@ -4,7 +4,7 @@ chcp 65001 >nul
 cd /d %~dp0
 
 if not exist node_modules (
-  echo Installing dependencies...
+  echo [3/4] Встановлення залежностей (npm install)...
   call npm install
   if errorlevel 1 goto :error
 )
