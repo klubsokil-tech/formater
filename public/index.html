@@ -5,13 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DOCX Formatter UI</title>
     <style>
-      body { font-family: Arial, sans-serif; margin: 24px; max-width: 1000px; }
-      .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
-      button { padding: 8px 14px; cursor: pointer; }
-      progress { width: 100%; height: 22px; }
-      .muted { color: #666; }
-      .log { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; }
-      .status { font-weight: bold; }
+      :root { --bg:#f4f7fb; --card:#ffffff; --line:#dbe4f0; --accent:#2f6fed; --text:#132033; }
+      * { box-sizing: border-box; }
+      body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+      .container { max-width: 1050px; margin: 28px auto; padding: 0 16px; }
+      h1 { margin: 0 0 16px; }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(20,30,60,.06); }
+      button { padding: 10px 16px; cursor: pointer; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; }
+      button:hover { filter: brightness(0.95); }
+      input[type="file"], select, textarea { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+      progress { width: 100%; height: 20px; }
+      .muted { color: #5c6c80; }
+      .log { background: #f8fbff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; }
+      .status { font-weight: 700; }
       .ok { color: #0b7a0b; }
       .warn { color: #ad6a00; }
       .err { color: #c01616; }
@@ -19,10 +25,12 @@
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
       label { display: block; }
       .full { grid-column: 1 / -1; }
-      select { padding: 4px; }
+      .hint { border-left: 3px solid #ffd670; background: #fff9e8; padding: 10px; border-radius: 8px; }
+      @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
     </style>
   </head>
   <body>
+  <div class="container">
     <h1>Academic DOCX Formatter — UI</h1>
 
     <div class="card">
@@ -38,9 +46,11 @@
           <label><input type="checkbox" id="addBlankLinesAroundHeadings" checked /> Порожній рядок до/після кожного заголовка</label>
           <label><input type="checkbox" id="addTOC" checked /> Додати автоматичний зміст (TOC)</label>
           <label><input type="checkbox" id="addRandomCitations" checked /> Додавати випадкові посилання [номер]</label>
+          <label><input type="checkbox" id="removeRandomCitations" /> Видаляти випадкові посилання [номер]</label>
           <label><input type="checkbox" id="normalizeBracketCitations" checked /> Уніфікувати формат посилань у квадратних дужках</label>
           <label><input type="checkbox" id="ensureBibliography" checked /> Додавати список джерел, якщо його немає</label>
           <label><input type="checkbox" id="preserveSpecialContent" checked /> Не змінювати корейські символи та спецконтент</label>
+          <label><input type="checkbox" id="preserveTablesAppearance" checked /> Максимально зберігати зовнішній вигляд таблиць</label>
 
           <label class="full">Сортування джерел:
             <select id="bibliographySort">
@@ -60,6 +70,7 @@
         <p><button type="submit">Запустити форматування</button></p>
       </form>
       <p class="muted">Усі параметри опційні: ви можете вимкнути непотрібні перед запуском.</p>
+      <p class="hint">Якщо ввімкнено «Видаляти випадкові посилання [номер]», опція додавання нових посилань автоматично ігнорується.</p>
     </div>
 
     <div class="card">
@@ -94,6 +105,7 @@
         return {
           addTOC: document.getElementById('addTOC').checked,
           addRandomCitations: document.getElementById('addRandomCitations').checked,
+          removeRandomCitations: document.getElementById('removeRandomCitations').checked,
           normalizeBracketCitations: document.getElementById('normalizeBracketCitations').checked,
           ensureBibliography: document.getElementById('ensureBibliography').checked,
           bibliographySort: document.getElementById('bibliographySort').value,
@@ -109,6 +121,7 @@
           enforceSectionPageBreaks: document.getElementById('enforceSectionPageBreaks').checked,
           addBlankLinesAroundHeadings: document.getElementById('addBlankLinesAroundHeadings').checked,
           preserveSpecialContent: document.getElementById('preserveSpecialContent').checked,
+          preserveTablesAppearance: document.getElementById('preserveTablesAppearance').checked,
         };
       }
 
@@ -142,6 +155,7 @@
             <li>Абзаців у вхідному файлі: <b>${stats.sourceParagraphs}</b></li>
             <li>Абзаців у вихідному файлі: <b>${stats.outputParagraphs}</b></li>
             <li>Додано посилань: <b>${stats.citationsAdded}</b></li>
+            <li>Видалено посилань: <b>${stats.citationsRemoved ?? 0}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
             <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>
           </ul>` : '';
@@ -246,5 +260,6 @@
         pollJob(jobId);
       });
     </script>
+  </div>
   </body>
 </html>

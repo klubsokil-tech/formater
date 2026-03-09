@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
+const JSZip = require('jszip');
 const {
   AlignmentType,
   Document,
@@ -25,6 +26,7 @@ const HEADING1_EXACT = new Set([
 const DEFAULT_OPTIONS = {
   addTOC: true,
   addRandomCitations: true,
+  removeRandomCitations: false,
   normalizeBracketCitations: true,
   ensureBibliography: true,
   bibliographySort: 'order', // order | alpha
@@ -35,6 +37,7 @@ const DEFAULT_OPTIONS = {
   enforceSectionPageBreaks: true,
   addBlankLinesAroundHeadings: true,
   preserveSpecialContent: true,
+  preserveTablesAppearance: true,
 };
 
 function sanitizeEditOptions(raw = {}) {
@@ -42,6 +45,7 @@ function sanitizeEditOptions(raw = {}) {
   const boolKeys = [
     'addTOC',
     'addRandomCitations',
+    'removeRandomCitations',
     'normalizeBracketCitations',
     'ensureBibliography',
     'applyPageSetup',
@@ -50,6 +54,7 @@ function sanitizeEditOptions(raw = {}) {
     'enforceSectionPageBreaks',
     'addBlankLinesAroundHeadings',
     'preserveSpecialContent',
+    'preserveTablesAppearance',
   ];
 
   for (const key of boolKeys) {
@@ -63,6 +68,10 @@ function sanitizeEditOptions(raw = {}) {
     .map((item) => String(item || '').trim())
     .filter(Boolean);
 
+  if (merged.removeRandomCitations) {
+    merged.addRandomCitations = false;
+  }
+
   return merged;
 }
 
@@ -71,7 +80,6 @@ function normalizeWhitespace(text) {
 }
 
 function normalizeCitationBrackets(text) {
-  // [ 1 ] -> [1], [5 - 7] -> [5-7], [3,  с. 12] -> [3, с. 12]
   return text.replace(/\[(.*?)\]/g, (_, inner) => {
     const cleaned = inner
       .replace(/\s*([-–])\s*/g, '$1')
@@ -80,6 +88,13 @@ function normalizeCitationBrackets(text) {
       .trim();
     return `[${cleaned}]`;
   });
+}
+
+function removeBracketNumberCitations(text) {
+  return text
+    .replace(/\s*\[\d+\]\s*/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 }
 
 function classifyParagraph(text) {
@@ -167,26 +182,37 @@ function buildBibliographySection(config = DEFAULT_OPTIONS) {
   if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
 
   for (const source of sortedSources) {
-    paragraphs.push(
-      new Paragraph({
-        children: [makeRun(`${source.id}. ${source.text}`, {}, config)],
-        alignment: config.applyTextFormatting ? AlignmentType.JUSTIFIED : undefined,
-        spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
-        indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
-      }),
-    );
+    paragraphs.push(makeNormalParagraph(`${source.id}. ${source.text}`, config));
   }
 
   return paragraphs;
 }
 
+async function inputHasTables(inputPath) {
+  const data = fs.readFileSync(inputPath);
+  const zip = await JSZip.loadAsync(data);
+  const docXml = await zip.file('word/document.xml')?.async('text');
+  if (!docXml) return false;
+  return /<w:tbl[\s>]/.test(docXml);
+}
+
 async function extractParagraphs(inputPath, config) {
   const { value } = await mammoth.extractRawText({ path: inputPath });
-  return value
+  let citationsRemoved = 0;
+
+  const paragraphs = value
     .split(/\r?\n/)
     .map((line) => normalizeWhitespace(line))
     .map((line) => (config.normalizeBracketCitations ? normalizeCitationBrackets(line) : line))
+    .map((line) => {
+      if (!config.removeRandomCitations) return line;
+      const matches = line.match(/\[\d+\]/g);
+      citationsRemoved += matches ? matches.length : 0;
+      return removeBracketNumberCitations(line);
+    })
     .filter(Boolean);
+
+  return { paragraphs, citationsRemoved };
 }
 
 function addCitations(paragraphs, config) {
@@ -236,8 +262,11 @@ async function formatDocx(inputPath, outputPath, options = {}) {
     throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
   }
 
+  onProgress('Перевіряю наявність таблиць...');
+  const hasTables = await inputHasTables(inputPath);
+
   onProgress('Зчитую текст з DOCX...');
-  const rawParagraphs = await extractParagraphs(inputPath, config);
+  const { paragraphs: rawParagraphs, citationsRemoved } = await extractParagraphs(inputPath, config);
 
   onProgress('Класифікую заголовки та абзаци...');
   const structured = rawParagraphs.map((text) => ({ type: classifyParagraph(text), text }));
@@ -321,18 +350,28 @@ async function formatDocx(inputPath, outputPath, options = {}) {
   const buffer = await Packer.toBuffer(doc);
   fs.writeFileSync(outputPath, buffer);
 
+  const notes = [];
+  if (config.preserveSpecialContent) {
+    notes.push('Корейські символи в тексті зберігаються як є.');
+  }
+  if (hasTables) {
+    notes.push(config.preserveTablesAppearance
+      ? 'У вхідному файлі знайдено таблиці: поточний engine може втрачати частину візуального оформлення таблиць. Рекомендується ручна перевірка таблиць у результаті.'
+      : 'У вхідному файлі знайдено таблиці: режим збереження зовнішнього вигляду таблиць вимкнено.');
+  }
+
   return {
     outputPath,
     stats: {
       sourceParagraphs: rawParagraphs.length,
       outputParagraphs: docParagraphs.length,
       citationsAdded,
+      citationsRemoved,
       bibliographyAdded,
       bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
       optionsUsed: config,
-      notes: config.preserveSpecialContent
-        ? ['Корейські символи в тексті зберігаються як є.', 'Складні обʼєкти (таблиці/формули) залежать від якості витягування Mammoth.']
-        : [],
+      notes,
+      hasTables,
     },
   };
 }
@@ -360,6 +399,7 @@ module.exports = {
   classifyParagraph,
   normalizeWhitespace,
   normalizeCitationBrackets,
+  removeBracketNumberCitations,
   DEFAULT_OPTIONS,
   resolveHeadingKind,
   sanitizeEditOptions,
