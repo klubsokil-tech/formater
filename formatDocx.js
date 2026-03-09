@@ -124,8 +124,8 @@ function removeBetweenMarkers(text, startMarker, endMarker) {
 
   const escapedStart = startMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const escapedEnd = endMarker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`${escapedStart}[\\s\\S]*?${escapedEnd}`, 'g');
-  return text.replace(pattern, ' ');
+  const pattern = new RegExp(`\\s*${escapedStart}[\\s\\S]*?${escapedEnd}\\s*`, 'g');
+  return text.replace(pattern, '');
 }
 
 function classifyParagraph(text) {
