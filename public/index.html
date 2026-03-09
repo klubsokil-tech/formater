@@ -5,85 +5,79 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DOCX Formatter UI</title>
     <style>
-      :root { --bg:#f4f7fb; --card:#ffffff; --line:#dbe4f0; --accent:#2f6fed; --text:#132033; }
+      :root { --bg:#f3f7ff; --card:#fff; --line:#dbe5f5; --accent:#356dff; --text:#112033; }
       * { box-sizing: border-box; }
-      body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: var(--bg); color: var(--text); }
-      .container { max-width: 1050px; margin: 28px auto; padding: 0 16px; }
-      h1 { margin: 0 0 16px; }
-      .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; box-shadow: 0 6px 20px rgba(20,30,60,.06); }
-      button { padding: 10px 16px; cursor: pointer; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; }
-      button:hover { filter: brightness(0.95); }
-      input[type="file"], select, textarea { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-      progress { width: 100%; height: 20px; }
-      .muted { color: #5c6c80; }
-      .log { background: #f8fbff; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 220px; overflow: auto; }
-      .status { font-weight: 700; }
-      .ok { color: #0b7a0b; }
-      .warn { color: #ad6a00; }
-      .err { color: #c01616; }
-      ul { margin-top: 8px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px; }
-      label { display: block; }
-      .full { grid-column: 1 / -1; }
-      .hint { border-left: 3px solid #ffd670; background: #fff9e8; padding: 10px; border-radius: 8px; }
-      @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+      body { margin:0; font-family:"Inter","Segoe UI",Arial,sans-serif; background:linear-gradient(180deg,#f8fbff,#eef4ff); color:var(--text); }
+      .container { max-width:1100px; margin:24px auto; padding:0 16px; }
+      h1 { margin:0 0 14px; }
+      .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px; margin-bottom:16px; box-shadow:0 8px 24px rgba(20,40,90,.08); }
+      .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 18px; }
+      .full { grid-column:1 / -1; }
+      label { display:block; font-size:14px; }
+      input[type="file"], select, textarea { width:100%; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff; }
+      .option-row { display:grid; grid-template-columns:1fr 150px; gap:10px; align-items:center; }
+      .hint { background:#fff9e9; border-left:4px solid #ffd36b; border-radius:8px; padding:10px; }
+      button { border:0; border-radius:10px; background:var(--accent); color:#fff; font-weight:700; padding:10px 16px; cursor:pointer; }
+      button:hover { filter:brightness(.95); }
+      progress { width:100%; height:22px; }
+      .log { background:#f7fbff; border:1px solid var(--line); border-radius:10px; padding:10px; max-height:220px; overflow:auto; }
+      .muted { color:#5d6f85; }
+      .status { font-weight:700; }
+      .ok { color:#0d7c22; } .warn { color:#a76a00; } .err { color:#c22727; }
+      @media(max-width:860px){ .grid{grid-template-columns:1fr;} .option-row{grid-template-columns:1fr;} }
     </style>
   </head>
   <body>
-  <div class="container">
-    <h1>Academic DOCX Formatter — UI</h1>
+    <div class="container">
+      <h1>Academic DOCX Formatter — UI</h1>
 
-    <div class="card">
-      <h2>1) Оберіть файл та опції редагування</h2>
-      <form id="uploadForm">
-        <p><input id="document" name="document" type="file" accept=".docx" required /></p>
+      <div class="card">
+        <h2>1) Файл і параметри</h2>
+        <form id="uploadForm">
+          <p><input id="document" name="document" type="file" accept=".docx" required /></p>
 
-        <div class="grid">
-          <label><input type="checkbox" id="applyPageSetup" checked /> Параметри сторінки (поля + книжкова орієнтація)</label>
-          <label><input type="checkbox" id="applyTextFormatting" checked /> Шрифт TNR 14, інтервал 1.5, абзац 1.25 см, вирівнювання по ширині</label>
-          <label><input type="checkbox" id="applyHeadingStyles" checked /> Стилі заголовків (жирний, по центру, чорний колір)</label>
-          <label><input type="checkbox" id="enforceSectionPageBreaks" checked /> Розрив сторінки перед кожним розділом</label>
-          <label><input type="checkbox" id="addBlankLinesAroundHeadings" checked /> Порожній рядок до/після кожного заголовка</label>
-          <label><input type="checkbox" id="addTOC" checked /> Додати автоматичний зміст (TOC)</label>
-          <label><input type="checkbox" id="addRandomCitations" checked /> Додавати випадкові посилання [номер]</label>
-          <label><input type="checkbox" id="removeRandomCitations" /> Видаляти випадкові посилання [номер]</label>
-          <label><input type="checkbox" id="normalizeBracketCitations" checked /> Уніфікувати формат посилань у квадратних дужках</label>
-          <label><input type="checkbox" id="ensureBibliography" checked /> Додавати список джерел, якщо його немає</label>
-          <label><input type="checkbox" id="preserveSpecialContent" checked /> Не змінювати корейські символи та спецконтент</label>
-          <label><input type="checkbox" id="preserveTablesAppearance" checked /> Максимально зберігати зовнішній вигляд таблиць</label>
+          <div class="grid">
+            <div class="option-row"><label>Параметри сторінки (поля + книжкова)</label><select id="mode-applyPageSetup"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Формат тексту (TNR14, 1.5, відступ)</label><select id="mode-applyTextFormatting"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Стилі заголовків (жирний, центр, чорний)</label><select id="mode-applyHeadingStyles"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Вирівнювання документа по ширині</label><select id="mode-justifyDocument"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Розрив сторінки перед розділом</label><select id="mode-enforceSectionPageBreaks"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Порожні рядки навколо заголовків</label><select id="mode-addBlankLinesAroundHeadings"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Автозміст TOC</label><select id="mode-addTOC"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Додавати випадкові посилання [номер]</label><select id="mode-addRandomCitations"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Видаляти випадкові посилання [номер]</label><select id="mode-removeRandomCitations"><option value="remove" selected>Прибрати</option><option value="add">Додати</option></select></div>
+            <div class="option-row"><label>Нормалізація посилань у дужках</label><select id="mode-normalizeBracketCitations"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Додавати список джерел, якщо нема</label><select id="mode-ensureBibliography"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Зберігати спецконтент (корейські символи)</label><select id="mode-preserveSpecialContent"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Зберігати зовнішній вигляд таблиць</label><select id="mode-preserveTablesAppearance"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
+            <div class="option-row"><label>Зберігати структуру таблиць (пріоритетно)</label><select id="mode-preserveTablesStructure"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
 
-          <label class="full">Сортування джерел:
-            <select id="bibliographySort">
-              <option value="order" selected>Порядок згадування (order)</option>
-              <option value="alpha">За алфавітом (alpha)</option>
-            </select>
-          </label>
+            <label class="full">Сортування джерел:
+              <select id="bibliographySort"><option value="order" selected>Порядок згадування</option><option value="alpha">За алфавітом</option></select>
+            </label>
 
+            <label class="full">Власний список джерел (по одному на рядок):
+              <textarea id="customSources" rows="6" placeholder="Джерело 1...&#10;Джерело 2..."></textarea>
+            </label>
+          </div>
 
-          <label class="full">Власний список джерел (по одному джерелу на рядок):
-            <textarea id="customSources" rows="6" style="width:100%;" placeholder="Приклад:
-Ковальчук І. П. ...
-Мельник О. В. ..."></textarea>
-          </label>
-        </div>
+          <p><button type="submit">Запустити форматування</button></p>
+        </form>
+        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Для таблиць рекомендується залишити «Зберігати структуру таблиць: Додати».</p>
+      </div>
 
-        <p><button type="submit">Запустити форматування</button></p>
-      </form>
-      <p class="muted">Усі параметри опційні: ви можете вимкнути непотрібні перед запуском.</p>
-      <p class="hint">Якщо ввімкнено «Видаляти випадкові посилання [номер]», опція додавання нових посилань автоматично ігнорується.</p>
-    </div>
+      <div class="card">
+        <h2>2) Процес виконання</h2>
+        <p>Статус: <span id="status" class="status">очікування</span></p>
+        <progress id="progress" value="0" max="100"></progress>
+        <p><span id="progressText">0%</span></p>
+        <div id="log" class="log"></div>
+      </div>
 
-    <div class="card">
-      <h2>2) Процес виконання</h2>
-      <p>Статус: <span id="status" class="status">очікування</span></p>
-      <progress id="progress" value="0" max="100"></progress>
-      <p><span id="progressText">0%</span></p>
-      <div id="log" class="log"></div>
-    </div>
-
-    <div class="card">
-      <h2>3) Звіт</h2>
-      <div id="report">Звіт ще не сформовано.</div>
+      <div class="card">
+        <h2>3) Звіт</h2>
+        <div id="report">Звіт ще не сформовано.</div>
+      </div>
     </div>
 
     <script>
@@ -93,130 +87,77 @@
       const progressTextEl = document.getElementById('progressText');
       const logEl = document.getElementById('log');
       const reportEl = document.getElementById('report');
-
       let pollTimer = null;
 
-      function setStatus(text, cls = '') {
-        statusEl.textContent = text;
-        statusEl.className = `status ${cls}`.trim();
-      }
+      function setStatus(text, cls = '') { statusEl.textContent = text; statusEl.className = `status ${cls}`.trim(); }
+      function mode(id) { return document.getElementById(`mode-${id}`).value; }
 
       function getEditOptions() {
         return {
-          addTOC: document.getElementById('addTOC').checked,
-          addRandomCitations: document.getElementById('addRandomCitations').checked,
-          removeRandomCitations: document.getElementById('removeRandomCitations').checked,
-          normalizeBracketCitations: document.getElementById('normalizeBracketCitations').checked,
-          ensureBibliography: document.getElementById('ensureBibliography').checked,
+          optionModes: {
+            addTOC: mode('addTOC'),
+            addRandomCitations: mode('addRandomCitations'),
+            removeRandomCitations: mode('removeRandomCitations'),
+            normalizeBracketCitations: mode('normalizeBracketCitations'),
+            ensureBibliography: mode('ensureBibliography'),
+            applyPageSetup: mode('applyPageSetup'),
+            applyTextFormatting: mode('applyTextFormatting'),
+            applyHeadingStyles: mode('applyHeadingStyles'),
+            justifyDocument: mode('justifyDocument'),
+            enforceSectionPageBreaks: mode('enforceSectionPageBreaks'),
+            addBlankLinesAroundHeadings: mode('addBlankLinesAroundHeadings'),
+            preserveSpecialContent: mode('preserveSpecialContent'),
+            preserveTablesAppearance: mode('preserveTablesAppearance'),
+            preserveTablesStructure: mode('preserveTablesStructure'),
+          },
           bibliographySort: document.getElementById('bibliographySort').value,
-          customSources: document
-            .getElementById('customSources')
-            .value
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean),
-          applyPageSetup: document.getElementById('applyPageSetup').checked,
-          applyTextFormatting: document.getElementById('applyTextFormatting').checked,
-          applyHeadingStyles: document.getElementById('applyHeadingStyles').checked,
-          enforceSectionPageBreaks: document.getElementById('enforceSectionPageBreaks').checked,
-          addBlankLinesAroundHeadings: document.getElementById('addBlankLinesAroundHeadings').checked,
-          preserveSpecialContent: document.getElementById('preserveSpecialContent').checked,
-          preserveTablesAppearance: document.getElementById('preserveTablesAppearance').checked,
+          customSources: document.getElementById('customSources').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
         };
       }
 
-      function renderLog(lines = []) {
-        logEl.innerHTML = lines.map((line) => `<div>• ${line}</div>`).join('');
-        logEl.scrollTop = logEl.scrollHeight;
-      }
+      function renderLog(lines = []) { logEl.innerHTML = lines.map((line) => `<div>• ${line}</div>`).join(''); logEl.scrollTop = logEl.scrollHeight; }
 
       function renderReport(job) {
-        if (!job) {
-          reportEl.textContent = 'Звіт ще не сформовано.';
-          return;
-        }
-
+        if (!job) { reportEl.textContent = 'Звіт ще не сформовано.'; return; }
         const stats = job.formatStats;
         const verify = job.verifyReport;
-
-        const optionsHtml = stats?.optionsUsed ? `
-          <h3>Застосовані опції</h3>
-          <ul>
-            ${Object.entries(stats.optionsUsed).map(([key, value]) => `<li><b>${key}</b>: ${String(value)}</li>`).join('')}
-          </ul>` : '';
-
-        const notesHtml = stats?.notes?.length ? `
-          <h3>Нотатки</h3>
-          <ul>${stats.notes.map((note) => `<li>${note}</li>`).join('')}</ul>` : '';
-
         const statsHtml = stats ? `
           <h3>Форматування</h3>
           <ul>
-            <li>Абзаців у вхідному файлі: <b>${stats.sourceParagraphs}</b></li>
-            <li>Абзаців у вихідному файлі: <b>${stats.outputParagraphs}</b></li>
             <li>Додано посилань: <b>${stats.citationsAdded}</b></li>
             <li>Видалено посилань: <b>${stats.citationsRemoved ?? 0}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
             <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>
+            <li>Таблиці у вхідному файлі: <b>${stats.hasTables ? 'так' : 'ні'}</b></li>
           </ul>` : '';
-
-        const verifyHtml = verify ? `
-          <h3>Перевірка</h3>
-          <ul>
-            ${verify.results.map((item) => `<li>${item.pass ? '✅' : '❌'} ${item.name}</li>`).join('')}
-          </ul>
-          <p><b>Підсумок:</b> ${verify.ok ? 'PASS ✅' : `FAIL ❌ (${verify.failedCount} невідповідностей)`}</p>` : '';
-
-        const downloadHtml = job.outputFilename
-          ? `<p><a href="/api/jobs/${job.id}/download">Завантажити output DOCX</a></p>`
-          : '';
-
+        const notesHtml = stats?.notes?.length ? `<h3>Нотатки</h3><ul>${stats.notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : '';
+        const verifyHtml = verify ? `<h3>Перевірка</h3><ul>${verify.results.map((item) => `<li>${item.pass ? '✅' : '❌'} ${item.name}</li>`).join('')}</ul><p><b>Підсумок:</b> ${verify.ok ? 'PASS ✅' : `FAIL ❌ (${verify.failedCount} невідповідностей)`}</p>` : '';
+        const downloadHtml = job.outputFilename ? `<p><a href="/api/jobs/${job.id}/download">Завантажити output DOCX</a></p>` : '';
         const errorHtml = job.error ? `<p class="err"><b>Помилка:</b> ${job.error}</p>` : '';
-
-        reportEl.innerHTML = `${errorHtml}${statsHtml}${optionsHtml}${notesHtml}${verifyHtml}${downloadHtml}` || 'Немає даних.';
+        reportEl.innerHTML = `${errorHtml}${statsHtml}${notesHtml}${verifyHtml}${downloadHtml}` || 'Немає даних.';
       }
 
       async function pollJob(jobId) {
         const response = await fetch(`/api/jobs/${jobId}`);
-        if (!response.ok) {
-          setStatus('помилка', 'err');
-          reportEl.innerHTML = '<p class="err">Не вдалося отримати стан завдання.</p>';
-          return;
-        }
-
+        if (!response.ok) { setStatus('помилка', 'err'); return; }
         const job = await response.json();
         progressEl.value = job.progress || 0;
         progressTextEl.textContent = `${job.progress || 0}%`;
         renderLog(job.log || []);
         renderReport(job);
-
-        if (job.status === 'failed') {
-          setStatus('з помилкою', 'err');
-          clearInterval(pollTimer);
-          return;
-        }
-        if (job.status === 'completed') {
-          setStatus('завершено', 'ok');
-          clearInterval(pollTimer);
-          return;
-        }
-        if (job.status === 'completed_with_warnings') {
-          setStatus('завершено з попередженнями', 'warn');
-          clearInterval(pollTimer);
-          return;
-        }
-
-        setStatus('виконується...', '');
+        if (job.status === 'failed') { setStatus('з помилкою', 'err'); clearInterval(pollTimer); return; }
+        if (job.status === 'completed') { setStatus('завершено', 'ok'); clearInterval(pollTimer); return; }
+        if (job.status === 'completed_with_warnings') { setStatus('завершено з попередженнями', 'warn'); clearInterval(pollTimer); return; }
+        setStatus('виконується...');
       }
 
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
-
         const fileInput = document.getElementById('document');
         if (!fileInput.files.length) return;
 
         clearInterval(pollTimer);
-        setStatus('завантаження...', '');
+        setStatus('завантаження...');
         progressEl.value = 0;
         progressTextEl.textContent = '0%';
         logEl.innerHTML = '';
@@ -227,39 +168,27 @@
           const reader = new FileReader();
           reader.onload = () => {
             const result = String(reader.result || '');
-            const b64 = result.includes(',') ? result.split(',')[1] : result;
-            resolve(b64);
+            resolve(result.includes(',') ? result.split(',')[1] : result);
           };
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
 
         const selectedOptions = getEditOptions();
-
         const response = await fetch('/api/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentBase64: base64,
-            editOptions: selectedOptions,
-            options: selectedOptions,
-          }),
+          body: JSON.stringify({ filename: file.name, contentBase64: base64, editOptions: selectedOptions, options: selectedOptions }),
         });
 
         const payload = await response.json();
-        if (!response.ok) {
-          setStatus('помилка', 'err');
-          reportEl.innerHTML = `<p class="err">${payload.error || 'Невідома помилка.'}</p>`;
-          return;
-        }
+        if (!response.ok) { setStatus('помилка', 'err'); reportEl.innerHTML = `<p class="err">${payload.error || 'Невідома помилка.'}</p>`; return; }
 
         const { jobId } = payload;
-        setStatus('виконується...', '');
+        setStatus('виконується...');
         pollTimer = setInterval(() => pollJob(jobId), 800);
         pollJob(jobId);
       });
     </script>
-  </div>
   </body>
 </html>

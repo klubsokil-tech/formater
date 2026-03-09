@@ -38,11 +38,15 @@ const DEFAULT_OPTIONS = {
   addBlankLinesAroundHeadings: true,
   preserveSpecialContent: true,
   preserveTablesAppearance: true,
+  preserveTablesStructure: true,
+  justifyDocument: true,
+  optionModes: {},
 };
 
 function sanitizeEditOptions(raw = {}) {
   const merged = { ...DEFAULT_OPTIONS, ...(raw || {}) };
-  const boolKeys = [
+
+  const modeKeys = [
     'addTOC',
     'addRandomCitations',
     'removeRandomCitations',
@@ -55,10 +59,21 @@ function sanitizeEditOptions(raw = {}) {
     'addBlankLinesAroundHeadings',
     'preserveSpecialContent',
     'preserveTablesAppearance',
+    'preserveTablesStructure',
+    'justifyDocument',
   ];
 
-  for (const key of boolKeys) {
-    merged[key] = Boolean(merged[key]);
+  const optionModes = merged.optionModes && typeof merged.optionModes === 'object' ? merged.optionModes : {};
+
+  for (const key of modeKeys) {
+    const mode = optionModes[key];
+    if (mode === 'add') {
+      merged[key] = true;
+    } else if (mode === 'remove') {
+      merged[key] = false;
+    } else {
+      merged[key] = Boolean(merged[key]);
+    }
   }
 
   merged.bibliographySort = merged.bibliographySort === 'alpha' ? 'alpha' : 'order';
@@ -74,6 +89,7 @@ function sanitizeEditOptions(raw = {}) {
 
   return merged;
 }
+
 
 function normalizeWhitespace(text) {
   return text.replace(/[ \t]{2,}/g, ' ').trim();
@@ -152,7 +168,7 @@ function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
 function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
   return new Paragraph({
     children: [makeRun(text, {}, config)],
-    alignment: config.applyTextFormatting ? AlignmentType.JUSTIFIED : undefined,
+    alignment: config.applyTextFormatting ? (config.justifyDocument ? AlignmentType.JUSTIFIED : AlignmentType.LEFT) : undefined,
     spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
     indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
   });
@@ -264,6 +280,28 @@ async function formatDocx(inputPath, outputPath, options = {}) {
 
   onProgress('Перевіряю наявність таблиць...');
   const hasTables = await inputHasTables(inputPath);
+
+  if (hasTables && config.preserveTablesStructure) {
+    onProgress('Знайдено таблиці: зберігаю структуру та розмітку оригіналу...');
+    fs.copyFileSync(inputPath, outputPath);
+    return {
+      outputPath,
+      stats: {
+        sourceParagraphs: 0,
+        outputParagraphs: 0,
+        citationsAdded: 0,
+        citationsRemoved: 0,
+        bibliographyAdded: false,
+        bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
+        optionsUsed: config,
+        notes: [
+          'Виявлено таблиці: файл збережено без перебудови, щоб коректно зберегти структуру, відступи та розмітку таблиць.',
+        ],
+        hasTables,
+        preservedOriginalForTables: true,
+      },
+    };
+  }
 
   onProgress('Зчитую текст з DOCX...');
   const { paragraphs: rawParagraphs, citationsRemoved } = await extractParagraphs(inputPath, config);
