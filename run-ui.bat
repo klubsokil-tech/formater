@@ -1,7 +1,7 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 chcp 65001 >nul
-cd /d %~dp0
+cd /d "%~dp0"
 
 if not exist node_modules (
   echo Installing dependencies...
@@ -10,9 +10,9 @@ if not exist node_modules (
 )
 
 echo.
-echo Запускаю Web UI на http://localhost:3000
-echo Після запуску відкрийте браузер, якщо він не відкрився автоматично.
-echo Для зупинки натисніть Ctrl+C у цьому вікні.
+echo Starting Web UI at http://localhost:3000
+echo If browser did not open automatically, open the URL manually.
+echo Press Ctrl+C in this window to stop the server.
 echo.
 start "" "http://localhost:3000"
 node server.js
@@ -22,6 +22,6 @@ exit /b 0
 
 :error
 echo.
-echo Не вдалося запустити Web UI.
+echo Failed to start Web UI.
 pause
 exit /b 1
