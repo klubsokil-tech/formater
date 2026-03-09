@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const mammoth = require('mammoth');
+const JSZip = require('jszip');
 const {
   AlignmentType,
   Document,
   HeadingLevel,
+  PageOrientation,
   Packer,
   Paragraph,
   TableOfContents,
@@ -18,10 +20,93 @@ const HEADING1_EXACT = new Set([
   'ВСТУП',
   'ВИСНОВКИ',
   'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ',
+  'СПИСОК ДЖЕРЕЛ',
 ]);
+
+const DEFAULT_OPTIONS = {
+  addTOC: true,
+  addRandomCitations: true,
+  removeRandomCitations: false,
+  normalizeBracketCitations: true,
+  ensureBibliography: true,
+  bibliographySort: 'order', // order | alpha
+  customSources: [],
+  applyPageSetup: true,
+  applyTextFormatting: true,
+  applyHeadingStyles: true,
+  enforceSectionPageBreaks: true,
+  addBlankLinesAroundHeadings: true,
+  preserveSpecialContent: true,
+  justifyDocument: true,
+  optionModes: {},
+};
+
+function sanitizeEditOptions(raw = {}) {
+  const merged = { ...DEFAULT_OPTIONS, ...(raw || {}) };
+
+  const modeKeys = [
+    'addTOC',
+    'addRandomCitations',
+    'removeRandomCitations',
+    'normalizeBracketCitations',
+    'ensureBibliography',
+    'applyPageSetup',
+    'applyTextFormatting',
+    'applyHeadingStyles',
+    'enforceSectionPageBreaks',
+    'addBlankLinesAroundHeadings',
+    'preserveSpecialContent',
+    'justifyDocument',
+  ];
+
+  const optionModes = merged.optionModes && typeof merged.optionModes === 'object' ? merged.optionModes : {};
+
+  for (const key of modeKeys) {
+    const mode = optionModes[key];
+    if (mode === 'add') {
+      merged[key] = true;
+    } else if (mode === 'remove') {
+      merged[key] = false;
+    } else {
+      merged[key] = Boolean(merged[key]);
+    }
+  }
+
+  merged.bibliographySort = merged.bibliographySort === 'alpha' ? 'alpha' : 'order';
+
+  const rawSources = Array.isArray(merged.customSources) ? merged.customSources : [];
+  merged.customSources = rawSources
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+
+  if (merged.removeRandomCitations) {
+    merged.addRandomCitations = false;
+  }
+
+  return merged;
+}
+
 
 function normalizeWhitespace(text) {
   return text.replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+function normalizeCitationBrackets(text) {
+  return text.replace(/\[(.*?)\]/g, (_, inner) => {
+    const cleaned = inner
+      .replace(/\s*([-–])\s*/g, '$1')
+      .replace(/\s*,\s*/g, ', ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    return `[${cleaned}]`;
+  });
+}
+
+function removeBracketNumberCitations(text) {
+  return text
+    .replace(/\s*\[\d+\]\s*/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 }
 
 function classifyParagraph(text) {
@@ -31,171 +116,296 @@ function classifyParagraph(text) {
   return 'normal';
 }
 
-function makeRun(text, opts = {}) {
+function makeRun(text, opts = {}, config = DEFAULT_OPTIONS) {
+  const base = config.applyTextFormatting
+    ? { font: 'Times New Roman', size: 28 }
+    : {};
+
   return new TextRun({
     text,
-    font: 'Times New Roman',
-    size: 28,
+    ...base,
     ...opts,
   });
 }
 
-function makeHeadingParagraph(text, level) {
+function makeEmptyLine() {
+  return new Paragraph({ children: [new TextRun({ text: '' })] });
+}
+
+function resolveHeadingKind(levelOrType) {
+  if (levelOrType === HeadingLevel.HEADING_1) return 'h1';
+  if (levelOrType === HeadingLevel.HEADING_2) return 'h2';
+  if (levelOrType === 'h1' || levelOrType === 'h2') return levelOrType;
+  return 'h2';
+}
+
+function makeHeadingParagraph(text, typeOrLevel, config = DEFAULT_OPTIONS) {
+  const headingKind = resolveHeadingKind(typeOrLevel);
+  const isH1 = headingKind === 'h1';
+  const headingLevel = isH1 ? HeadingLevel.HEADING_1 : HeadingLevel.HEADING_2;
+  const headingText = isH1 ? text.toUpperCase() : text.charAt(0).toUpperCase() + text.slice(1);
+
   return new Paragraph({
-    text,
-    heading: level,
-    alignment: AlignmentType.CENTER,
-    spacing: { line: 360, before: 200, after: 120 },
-    pageBreakBefore: level === HeadingLevel.HEADING_1,
+    children: [
+      makeRun(
+        headingText,
+        config.applyHeadingStyles ? { bold: true, color: '000000' } : {},
+        config,
+      ),
+    ],
+    heading: headingLevel,
+    alignment: config.applyHeadingStyles ? AlignmentType.CENTER : (isH1 ? AlignmentType.CENTER : AlignmentType.LEFT),
+    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 0 } : undefined,
+    pageBreakBefore: isH1 && config.enforceSectionPageBreaks,
+    indent: !isH1 && config.applyTextFormatting ? { firstLine: 709 } : undefined,
   });
 }
 
-function makeNormalParagraph(text) {
+function insertCitationInline(text, citation) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return `${text} ${citation}`.trim();
+  const idx = Math.max(1, Math.min(words.length - 1, Math.floor(Math.random() * (words.length - 1))));
+  words.splice(idx, 0, citation);
+  return words.join(' ');
+}
+
+function parseListItem(text) {
+  const m = text.match(/^\s*((?:[-•*])|(?:\d+[\.)]))\s+(.*)$/);
+  if (!m) return null;
+  return { marker: m[1], content: m[2] };
+}
+
+function makeNormalParagraph(text, config = DEFAULT_OPTIONS) {
+  const listItem = parseListItem(text);
+  if (listItem) {
+    return new Paragraph({
+      children: [makeRun(`${listItem.marker}	${listItem.content}`, {}, config)],
+      alignment: config.applyTextFormatting ? AlignmentType.LEFT : undefined,
+      spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+      indent: config.applyTextFormatting ? { left: 709, hanging: 360 } : undefined,
+    });
+  }
+
   return new Paragraph({
-    children: [makeRun(text)],
-    alignment: AlignmentType.JUSTIFIED,
-    spacing: { line: 360, before: 0, after: 120 },
-    indent: { firstLine: 709 },
+    children: [makeRun(text, {}, config)],
+    alignment: config.applyTextFormatting ? (config.justifyDocument ? AlignmentType.JUSTIFIED : AlignmentType.LEFT) : undefined,
+    spacing: config.applyTextFormatting ? { line: 360, before: 0, after: 120 } : undefined,
+    indent: config.applyTextFormatting ? { firstLine: 709 } : undefined,
   });
 }
 
-function buildBibliographySection() {
-  const paragraphs = [
-    makeHeadingParagraph('СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', HeadingLevel.HEADING_1),
-  ];
+function getSortedSources(mode, customSources = []) {
+  if (customSources.length > 0) {
+    const normalizedCustom = customSources.map((text, index) => ({ id: index + 1, text }));
+    if (mode === 'alpha') {
+      return normalizedCustom.sort((a, b) => a.text.localeCompare(b.text, 'uk'));
+    }
+    return normalizedCustom;
+  }
 
-  for (const source of SOURCES) {
-    paragraphs.push(
-      new Paragraph({
-        children: [makeRun(`${source.id}. ${source.text}`)],
-        alignment: AlignmentType.JUSTIFIED,
-        spacing: { line: 360, before: 0, after: 120 },
-        indent: { firstLine: 709 },
-      }),
-    );
+  if (mode === 'alpha') {
+    return [...SOURCES].sort((a, b) => a.text.localeCompare(b.text, 'uk'));
+  }
+  return SOURCES;
+}
+
+function buildBibliographySection(config = DEFAULT_OPTIONS) {
+  const sortedSources = getSortedSources(config.bibliographySort, config.customSources);
+  const paragraphs = [];
+
+  if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
+  paragraphs.push(makeHeadingParagraph('СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', 'h1', config));
+  if (config.addBlankLinesAroundHeadings) paragraphs.push(makeEmptyLine());
+
+  for (const source of sortedSources) {
+    paragraphs.push(makeNormalParagraph(`${source.id}. ${source.text}`, config));
   }
 
   return paragraphs;
 }
 
-async function extractParagraphs(inputPath) {
-  const { value } = await mammoth.extractRawText({ path: inputPath });
-  return value
-    .split(/\r?\n/)
-    .map((line) => normalizeWhitespace(line))
-    .filter(Boolean);
+async function inputHasTables(inputPath) {
+  const data = fs.readFileSync(inputPath);
+  const zip = await JSZip.loadAsync(data);
+  const docXml = await zip.file('word/document.xml')?.async('text');
+  if (!docXml) return false;
+  return /<w:tbl[\s>]/.test(docXml);
 }
 
-function addCitations(paragraphs) {
+async function extractParagraphs(inputPath, config) {
+  const { value } = await mammoth.extractRawText({ path: inputPath });
+  let citationsRemoved = 0;
+
+  const paragraphs = value
+    .split(/\r?\n/)
+    .map((line) => normalizeWhitespace(line))
+    .map((line) => (config.normalizeBracketCitations ? normalizeCitationBrackets(line) : line))
+    .map((line) => {
+      if (!config.removeRandomCitations) return line;
+      const matches = line.match(/\[\d+\]/g);
+      citationsRemoved += matches ? matches.length : 0;
+      return removeBracketNumberCitations(line);
+    })
+    .filter(Boolean);
+
+  return { paragraphs, citationsRemoved };
+}
+
+function addCitations(paragraphs, config) {
+  if (!config.addRandomCitations) {
+    return { paragraphs, citationsAdded: 0 };
+  }
+
+  const NORMAL_PARAGRAPHS_PER_PAGE = 12;
   const output = [];
-  let normalCounter = 0;
+  let normalOnPage = 0;
+  let citationsOnPage = 0;
+  let targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
   let lastSourceId = null;
-  let lastWasCitation = false;
-  let target = Math.random() < 0.5 ? 1 : 2;
+  let citationsAdded = 0;
 
   for (const item of paragraphs) {
     output.push(item);
 
     if (item.type !== 'normal') {
-      normalCounter = 0;
       continue;
     }
 
-    normalCounter += 1;
+    normalOnPage += 1;
 
-    if (normalCounter >= target && !lastWasCitation) {
+    const remainingNormalsInPage = Math.max(1, NORMAL_PARAGRAPHS_PER_PAGE - normalOnPage + 1);
+    const citationsStillNeeded = Math.max(0, targetCitationsOnPage - citationsOnPage);
+    const mustInsertNow = citationsStillNeeded >= remainingNormalsInPage;
+    const randomInsert = Math.random() < (citationsStillNeeded / remainingNormalsInPage);
+
+    if (citationsStillNeeded > 0 && (mustInsertNow || randomInsert)) {
       const { citation, sourceId } = createCitation(lastSourceId);
-      output.push({ type: 'citation', text: citation });
+      output[output.length - 1] = { ...item, text: insertCitationInline(item.text, citation) };
       lastSourceId = sourceId;
-      lastWasCitation = true;
-      normalCounter = 0;
-      target = Math.random() < 0.5 ? 1 : 2;
-    } else {
-      lastWasCitation = false;
+      citationsOnPage += 1;
+      citationsAdded += 1;
+    }
+
+    if (normalOnPage >= NORMAL_PARAGRAPHS_PER_PAGE) {
+      normalOnPage = 0;
+      citationsOnPage = 0;
+      targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
     }
   }
 
-  return output;
+  return { paragraphs: output, citationsAdded };
 }
 
-async function formatDocx(inputPath, outputPath) {
+async function formatDocx(inputPath, outputPath, options = {}) {
+  const onProgress = options.onProgress || (() => {});
+  const config = sanitizeEditOptions(options.editOptions || {});
+
+  onProgress('Перевіряю вхідний файл...');
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Вхідний файл не знайдено: ${inputPath}`);
   }
 
-  const rawParagraphs = await extractParagraphs(inputPath);
+  onProgress('Перевіряю наявність таблиць...');
+  const hasTables = await inputHasTables(inputPath);
+  onProgress('Зчитую текст з DOCX...');
+  const { paragraphs: rawParagraphs, citationsRemoved } = await extractParagraphs(inputPath, config);
 
-  const structured = rawParagraphs.map((text) => ({
-    type: classifyParagraph(text),
-    text,
-  }));
+  onProgress('Класифікую заголовки та абзаци...');
+  const structured = rawParagraphs.map((text) => ({ type: classifyParagraph(text), text }));
 
-  const withCitations = addCitations(structured);
+  onProgress('Обробляю посилання та структуру...');
+  const { paragraphs: withCitations, citationsAdded } = addCitations(structured, config);
 
   const docParagraphs = [];
 
-  docParagraphs.push(
-    new Paragraph({
-      text: 'ЗМІСТ',
-      heading: HeadingLevel.HEADING_1,
-      alignment: AlignmentType.CENTER,
-      pageBreakBefore: false,
-    }),
-  );
-  docParagraphs.push(
-    new TableOfContents('Зміст', {
-      hyperlink: true,
-      headingStyleRange: '1-2',
-      stylesWithLevels: [
-        { styleName: 'Heading 1', level: 1 },
-        { styleName: 'Heading 2', level: 2 },
-      ],
-    }),
-  );
+  if (config.addTOC) {
+    onProgress('Формую зміст документа...');
+    if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+    docParagraphs.push(makeHeadingParagraph('ЗМІСТ', 'h1', config));
+    if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+    docParagraphs.push(
+      new TableOfContents('Зміст', {
+        hyperlink: true,
+        headingStyleRange: '1-2',
+        stylesWithLevels: [
+          { styleName: 'Heading 1', level: 1 },
+          { styleName: 'Heading 2', level: 2 },
+        ],
+      }),
+    );
+  }
 
   for (const item of withCitations) {
     if (item.type === 'h1') {
-      docParagraphs.push(makeHeadingParagraph(item.text.toUpperCase(), HeadingLevel.HEADING_1));
+      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+      docParagraphs.push(makeHeadingParagraph(item.text, 'h1', config));
+      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
     } else if (item.type === 'h2') {
-      docParagraphs.push(makeHeadingParagraph(item.text, HeadingLevel.HEADING_2));
-    } else if (item.type === 'citation') {
-      docParagraphs.push(
-        new Paragraph({
-          children: [makeRun(item.text, { italics: true })],
-          alignment: AlignmentType.RIGHT,
-          spacing: { line: 360, before: 0, after: 120 },
-        }),
-      );
+      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
+      docParagraphs.push(makeHeadingParagraph(item.text, 'h2', config));
+      if (config.addBlankLinesAroundHeadings) docParagraphs.push(makeEmptyLine());
     } else {
-      docParagraphs.push(makeNormalParagraph(item.text));
+      docParagraphs.push(makeNormalParagraph(item.text, config));
     }
   }
 
-  if (!withCitations.some((p) => p.type === 'h1' && p.text.toUpperCase() === 'СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ')) {
-    docParagraphs.push(...buildBibliographySection());
+  let bibliographyAdded = false;
+  if (config.ensureBibliography && !withCitations.some((p) => p.type === 'h1' && ['СПИСОК ВИКОРИСТАНИХ ДЖЕРЕЛ', 'СПИСОК ДЖЕРЕЛ'].includes(p.text.toUpperCase()))) {
+    docParagraphs.push(...buildBibliographySection(config));
+    bibliographyAdded = true;
   }
+
+  const sectionProperties = config.applyPageSetup
+    ? {
+        page: {
+          margin: {
+            top: 1134,
+            right: 567,
+            bottom: 1134,
+            left: 1701,
+          },
+          size: {
+            orientation: PageOrientation.PORTRAIT,
+          },
+        },
+      }
+    : {};
 
   const doc = new Document({
     sections: [
       {
-        properties: {
-          page: {
-            margin: {
-              top: 1134,
-              right: 567,
-              bottom: 1134,
-              left: 1701,
-            },
-          },
-        },
+        properties: sectionProperties,
         children: docParagraphs,
       },
     ],
   });
 
+  onProgress('Зберігаю відформатований файл...');
   const buffer = await Packer.toBuffer(doc);
   fs.writeFileSync(outputPath, buffer);
-  return outputPath;
+
+  const notes = [];
+  if (config.preserveSpecialContent) {
+    notes.push('Усі символи у тексті зберігаються як є (включно з корейськими та спеціальними символами).');
+  }
+  if (hasTables) {
+    notes.push('У вхідному файлі знайдено таблиці: структура та розмітка таблиць збережені настільки, наскільки це підтримує DOCX engine. Перевірте таблиці вручну у Word.');
+  }
+
+  return {
+    outputPath,
+    stats: {
+      sourceParagraphs: rawParagraphs.length,
+      outputParagraphs: docParagraphs.length,
+      citationsAdded,
+      citationsRemoved,
+      bibliographyAdded,
+      bibliographySourceCount: config.customSources.length > 0 ? config.customSources.length : SOURCES.length,
+      optionsUsed: config,
+      notes,
+      hasTables,
+    },
+  };
 }
 
 async function main() {
@@ -203,8 +413,8 @@ async function main() {
   const outputPath = process.argv[3] || 'output.docx';
 
   try {
-    await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
-    console.log(`Готово. Створено файл: ${outputPath}`);
+    const result = await formatDocx(path.resolve(inputPath), path.resolve(outputPath));
+    console.log(`Готово. Створено файл: ${result.outputPath}`);
     console.log('За бажанням виконайте перевірку: node verify.js ' + outputPath);
   } catch (error) {
     console.error('Помилка форматування:', error.message);
@@ -220,4 +430,11 @@ module.exports = {
   formatDocx,
   classifyParagraph,
   normalizeWhitespace,
+  normalizeCitationBrackets,
+  removeBracketNumberCitations,
+  insertCitationInline,
+  parseListItem,
+  DEFAULT_OPTIONS,
+  resolveHeadingKind,
+  sanitizeEditOptions,
 };
