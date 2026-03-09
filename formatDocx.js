@@ -39,6 +39,7 @@ const DEFAULT_OPTIONS = {
   preserveSpecialContent: true,
   justifyDocument: true,
   optionModes: {},
+  citationsPerPage: 2,
 };
 
 function sanitizeEditOptions(raw = {}) {
@@ -73,6 +74,8 @@ function sanitizeEditOptions(raw = {}) {
   }
 
   merged.bibliographySort = merged.bibliographySort === 'alpha' ? 'alpha' : 'order';
+
+  merged.citationsPerPage = Number.isFinite(Number(merged.citationsPerPage)) ? Math.max(1, Math.min(6, Number(merged.citationsPerPage))) : 2;
 
   const rawSources = Array.isArray(merged.customSources) ? merged.customSources : [];
   merged.customSources = rawSources
@@ -258,6 +261,8 @@ function addCitations(paragraphs, config) {
 
   const EXCLUDED_SECTIONS = new Set(['ВСТУП', 'ВИСНОВКИ']);
   const WORDS_PER_PAGE_ESTIMATE = 260;
+  const MIN_FULL_WIDTH_WORDS = 10;
+  const MIN_FULL_WIDTH_CHARS = 70;
 
   let currentSection = null;
   let totalEligibleWords = 0;
@@ -275,14 +280,17 @@ function addCitations(paragraphs, config) {
       continue;
     }
 
+    const words = item.text.split(/\s+/).filter(Boolean);
     const isList = Boolean(parseListItem(item.text));
     const isExcludedSection = currentSection && EXCLUDED_SECTIONS.has(currentSection);
-    if (isList || isExcludedSection) {
+    const notFullWidth = words.length < MIN_FULL_WIDTH_WORDS || item.text.length < MIN_FULL_WIDTH_CHARS;
+
+    if (isList || isExcludedSection || notFullWidth) {
       continue;
     }
 
     eligibleIndexes.push(i);
-    totalEligibleWords += item.text.split(/\s+/).filter(Boolean).length;
+    totalEligibleWords += words.length;
   }
 
   if (eligibleIndexes.length === 0) {
@@ -290,14 +298,16 @@ function addCitations(paragraphs, config) {
   }
 
   const estimatedPages = Math.max(1, Math.round(totalEligibleWords / WORDS_PER_PAGE_ESTIMATE));
-  let citationsTarget = 0;
-  for (let i = 0; i < estimatedPages; i += 1) {
-    citationsTarget += Math.random() < 0.5 ? 2 : 3;
-  }
-  citationsTarget = Math.min(citationsTarget, eligibleIndexes.length);
+  const citationsTarget = Math.min(eligibleIndexes.length, estimatedPages * config.citationsPerPage);
 
-  const shuffled = [...eligibleIndexes].sort(() => Math.random() - 0.5);
-  const chosen = new Set(shuffled.slice(0, citationsTarget));
+  const chosen = new Set();
+  if (citationsTarget > 0) {
+    for (let k = 0; k < citationsTarget; k += 1) {
+      const pos = Math.floor(((k + 0.5) * eligibleIndexes.length) / citationsTarget);
+      const boundedPos = Math.max(0, Math.min(eligibleIndexes.length - 1, pos));
+      chosen.add(eligibleIndexes[boundedPos]);
+    }
+  }
 
   const output = [];
   let lastSourceId = null;

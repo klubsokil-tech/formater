@@ -50,6 +50,11 @@
             <div class="option-row"><label>Додавати список джерел, якщо нема</label><select id="mode-ensureBibliography"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
             <div class="option-row"><label>Зберігати спецконтент (корейські символи)</label><select id="mode-preserveSpecialContent"><option value="add" selected>Додати</option><option value="remove">Прибрати</option></select></div>
             
+
+
+            <label class="full">Кількість посилань на сторінку: <b id="citationsPerPageValue">2</b>
+              <input id="citationsPerPage" type="range" min="1" max="6" step="1" value="2" />
+            </label>
             <label class="full">Сортування джерел:
               <select id="bibliographySort"><option value="order" selected>Порядок згадування</option><option value="alpha">За алфавітом</option></select>
             </label>
@@ -61,7 +66,7 @@
 
           <p><button type="submit">Запустити форматування</button></p>
         </form>
-        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Нормалізація посилань у дужках уніфікує вигляд на зразок [ 1 ] → [1], [5 - 7] → [5-7]. Решта списків через нумерацію або маркери ( - ) або інші. Посилання не вставляються у списки, розділи «ВСТУП» та «ВИСНОВКИ».</p>
+        <p class="hint">Кожна опція керується випадаючим списком «Додати / Прибрати». Нормалізація посилань у дужках уніфікує вигляд на зразок [ 1 ] → [1], [5 - 7] → [5-7]. Решта списків через нумерацію або маркери ( - ) або інші. Посилання не вставляються у списки, розділи «ВСТУП» та «ВИСНОВКИ», а також у короткі рядки (не на всю ширину сторінки).</p>
       </div>
 
       <div class="card">
@@ -89,6 +94,9 @@
 
       function setStatus(text, cls = '') { statusEl.textContent = text; statusEl.className = `status ${cls}`.trim(); }
       function mode(id) { return document.getElementById(`mode-${id}`).value; }
+      const citationsPerPageEl = document.getElementById('citationsPerPage');
+      const citationsPerPageValueEl = document.getElementById('citationsPerPageValue');
+      citationsPerPageEl.addEventListener('input', () => { citationsPerPageValueEl.textContent = citationsPerPageEl.value; });
 
       function getEditOptions() {
         return {
@@ -107,6 +115,7 @@
             preserveSpecialContent: mode('preserveSpecialContent'),
           },
           bibliographySort: document.getElementById('bibliographySort').value,
+          citationsPerPage: Number(document.getElementById('citationsPerPage').value),
           customSources: document.getElementById('customSources').value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
         };
       }
@@ -122,6 +131,7 @@
           <ul>
             <li>Додано посилань: <b>${stats.citationsAdded}</b></li>
             <li>Ціль посилань: <b>${stats.citationsTarget ?? "-"}</b></li>
+            <li>Налаштовано посилань/сторінку: <b>${stats.optionsUsed?.citationsPerPage ?? '-'}</b></li>
             <li>Видалено посилань: <b>${stats.citationsRemoved ?? 0}</b></li>
             <li>Додано список джерел: <b>${stats.bibliographyAdded ? 'так' : 'ні'}</b></li>
             <li>Джерел у фінальному списку: <b>${stats.bibliographySourceCount ?? '-'}</b></li>
