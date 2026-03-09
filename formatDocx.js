@@ -256,33 +256,40 @@ function addCitations(paragraphs, config) {
     return { paragraphs, citationsAdded: 0 };
   }
 
+  const NORMAL_PARAGRAPHS_PER_PAGE = 12;
   const output = [];
-  let normalCounter = 0;
+  let normalOnPage = 0;
+  let citationsOnPage = 0;
+  let targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
   let lastSourceId = null;
-  let lastWasCitation = false;
-  let target = Math.random() < 0.5 ? 1 : 2;
   let citationsAdded = 0;
 
   for (const item of paragraphs) {
     output.push(item);
 
     if (item.type !== 'normal') {
-      normalCounter = 0;
       continue;
     }
 
-    normalCounter += 1;
+    normalOnPage += 1;
 
-    if (normalCounter >= target && !lastWasCitation) {
+    const remainingNormalsInPage = Math.max(1, NORMAL_PARAGRAPHS_PER_PAGE - normalOnPage + 1);
+    const citationsStillNeeded = Math.max(0, targetCitationsOnPage - citationsOnPage);
+    const mustInsertNow = citationsStillNeeded >= remainingNormalsInPage;
+    const randomInsert = Math.random() < (citationsStillNeeded / remainingNormalsInPage);
+
+    if (citationsStillNeeded > 0 && (mustInsertNow || randomInsert)) {
       const { citation, sourceId } = createCitation(lastSourceId);
       output[output.length - 1] = { ...item, text: insertCitationInline(item.text, citation) };
       lastSourceId = sourceId;
-      lastWasCitation = true;
-      normalCounter = 0;
-      target = Math.random() < 0.5 ? 1 : 2;
+      citationsOnPage += 1;
       citationsAdded += 1;
-    } else {
-      lastWasCitation = false;
+    }
+
+    if (normalOnPage >= NORMAL_PARAGRAPHS_PER_PAGE) {
+      normalOnPage = 0;
+      citationsOnPage = 0;
+      targetCitationsOnPage = Math.random() < 0.5 ? 2 : 3;
     }
   }
 
